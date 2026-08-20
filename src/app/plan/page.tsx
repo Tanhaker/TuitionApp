@@ -68,7 +68,7 @@ export default async function PlanPage() {
       .order("name"),
     supabase
       .from("lessons")
-      .select("student_id, subject_id, taught_on")
+      .select("student_id, subject_id, taught_on, note")
       .gte("taught_on", shiftDate(today, -90))
       .in("student_id", myIds),
     supabase
@@ -82,10 +82,17 @@ export default async function PlanPage() {
   const students = (studentRows ?? []) as Student[];
 
   const lastTaught = new Map<string, string>();
+  // Where this subject was left off, so the suggestion says what to teach next
+  // rather than only that something is overdue.
+  const lastNote = new Map<string, string>();
   for (const l of history ?? []) {
     const key = `${l.student_id}|${l.subject_id}`;
     const prev = lastTaught.get(key);
-    if (!prev || (l.taught_on as string) > prev) lastTaught.set(key, l.taught_on as string);
+    if (!prev || (l.taught_on as string) > prev) {
+      lastTaught.set(key, l.taught_on as string);
+      if (l.note) lastNote.set(key, l.note as string);
+      else lastNote.delete(key);
+    }
   }
 
   const nextExam = new Map<string, string>();
@@ -112,6 +119,7 @@ export default async function PlanPage() {
             exam,
             daysSince,
             toExam,
+            lastNote: lastNote.get(key) ?? null,
             value: score(toExam, daysSince),
           };
         })
@@ -160,6 +168,11 @@ export default async function PlanPage() {
                         ? "never taught"
                         : `last taught ${i.daysSince}d ago`}
                     </div>
+                    {i.lastNote && (
+                      <div className="hint">
+                        Left off at <span className="mono">{i.lastNote}</span>
+                      </div>
+                    )}
                   </div>
                   <span
                     className="gap"

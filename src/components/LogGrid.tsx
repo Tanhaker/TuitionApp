@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import { toggleLesson } from "@/app/actions";
+import { setLessonNote, toggleLesson } from "@/app/actions";
 import { daysBetween, prettyDate, shiftDate, todayISO } from "@/lib/dates";
 import type { Student } from "@/lib/types";
 
@@ -12,6 +12,10 @@ export type ChipData = {
   on: boolean;
   lastTaught: string | null;
   examDate: string | null;
+  /** The chapter recorded against today's lesson, once one is logged. */
+  note: string | null;
+  /** The chapter from the previous time this subject was taught. */
+  lastNote: string | null;
 };
 
 export type RowData = {
@@ -36,6 +40,13 @@ export default function LogGrid({
   const [flip, setFlip] = useState<Record<string, boolean>>({});
   const [pending, setPending] = useState<Record<string, boolean>>({});
   const [error, setError] = useState<string | null>(null);
+
+  // Chapters. Logging stays one tap: recording what was covered is a separate,
+  // optional action, so a teacher in a hurry is never held up by a text field.
+  const [noteFlip, setNoteFlip] = useState<Record<string, string | null>>({});
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
 
   const today = todayISO();
 
@@ -65,6 +76,12 @@ export default function LogGrid({
         return;
       }
       setFlip((f) => ({ ...f, [key]: res.on }));
+      if (!res.on) {
+        // The lesson is gone, so its chapter went with it. Drop any local copy
+        // and close the editor if it was open on this subject.
+        setNoteFlip((n) => ({ ...n, [key]: null }));
+        setEditing((e) => (e === key ? null : e));
+      }
       startTransition(() => router.refresh());
     } catch {
       // Only transport failures reach here now — the action returns its own
@@ -73,6 +90,28 @@ export default function LogGrid({
       setError("Could not save. Check your connection and tap again.");
     } finally {
       setPending((p) => ({ ...p, [key]: false }));
+    }
+  }
+
+  async function saveNote(studentId: string, subjectId: string) {
+    const key = `${studentId}|${subjectId}`;
+    const text = draft.trim();
+    setSavingNote(true);
+    setError(null);
+    try {
+      const res = await setLessonNote(studentId, subjectId, date, text);
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      setNoteFlip((n) => ({ ...n, [key]: res.note }));
+      setEditing(null);
+      setDraft("");
+      startTransition(() => router.refresh());
+    } catch {
+      setError("Could not save that chapter. Check your connection and try again.");
+    } finally {
+      setSavingNote(false);
     }
   }
 
@@ -176,6 +215,88 @@ export default function LogGrid({
                   );
                 })}
               </div>
+
+              {/* Chapters, for subjects logged today only. */}
+              {(() => {
+                const logged = row.subjects.filter(
+                  (sub) => flip[`${row.student.id}|${sub.id}`] ?? sub.on
+                );
+                if (logged.length === 0) return null;
+
+                return (
+                  <div className="chapters">
+                    {logged.map((sub) => {
+                      const key = `${row.student.id}|${sub.id}`;
+                      const text = noteFlip[key] !== undefined ? noteFlip[key] : sub.note;
+
+                      if (editing === key) {
+                        return (
+                          <form
+                            className="chapter-edit"
+                            key={sub.id}
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              saveNote(row.student.id, sub.id);
+                            }}
+                          >
+                            <label className="eyebrow" htmlFor={`ch-${key}`}>
+                              {sub.name} — chapter or topic
+                            </label>
+                            <input
+                              id={`ch-${key}`}
+                              autoFocus
+                              value={draft}
+                              maxLength={120}
+                              disabled={savingNote}
+                              onChange={(e) => setDraft(e.target.value)}
+                              placeholder={
+                                sub.lastNote ? `last time: ${sub.lastNote}` : "e.g. Ch 4 Fractions"
+                              }
+                            />
+                            <div className="between" style={{ gap: 6 }}>
+                              <button className="btn" style={{ flex: 1 }} disabled={savingNote}>
+                                {savingNote ? "Saving…" : "Save"}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn ghost"
+                                style={{ flex: 1 }}
+                                disabled={savingNote}
+                                onClick={() => {
+                                  setEditing(null);
+                                  setDraft("");
+                                }}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                            {sub.lastNote && (
+                              <p className="hint">
+                                Last time: <span className="mono">{sub.lastNote}</span>
+                              </p>
+                            )}
+                          </form>
+                        );
+                      }
+
+                      return (
+                        <button
+                          key={sub.id}
+                          className="chapter"
+                          data-empty={text ? undefined : "true"}
+                          onClick={() => {
+                            setEditing(key);
+                            setDraft(text ?? "");
+                          }}
+                        >
+                          <span className="subj">{sub.name}</span>
+                          <span className="what">{text || "add chapter"}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </article>
           ))}
         </div>
@@ -184,7 +305,8 @@ export default function LogGrid({
       <p className="hint" style={{ marginTop: 14 }}>
         Tap a subject to log it, tap again to undo. The small number is days since
         you last taught that subject to that student — or days to their exam once
-        one is near.
+        one is near. Once a subject is logged you can add the chapter you covered;
+        it shows up in Reports and in the CSV export.
       </p>
     </>
   );

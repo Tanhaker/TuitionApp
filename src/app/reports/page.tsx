@@ -74,7 +74,7 @@ export default async function ReportsPage({
   const [{ data: inRange }, { data: everLessons }] = await Promise.all([
     supabase
       .from("lessons")
-      .select("student_id, subject_id, teacher_id, taught_on")
+      .select("student_id, subject_id, teacher_id, taught_on, note")
       .gte("taught_on", from)
       .lte("taught_on", today)
       .in("student_id", ids),
@@ -95,9 +95,19 @@ export default async function ReportsPage({
   }
 
   const countInRange = new Map<string, number>();
+  // Chapters covered in this window, newest first, de-duplicated: the same
+  // chapter often runs across two or three sessions and listing it three times
+  // makes the report harder to read, not more accurate.
+  const chapters = new Map<string, string[]>();
   for (const l of inRange ?? []) {
     const key = `${l.student_id}|${l.subject_id}`;
     countInRange.set(key, (countInRange.get(key) ?? 0) + 1);
+    const note = (l.note as string | null)?.trim();
+    if (note) {
+      const list = chapters.get(key) ?? [];
+      if (!list.includes(note)) list.push(note);
+      chapters.set(key, list);
+    }
   }
 
   const csvRows = (inRange ?? []).map((l) => ({
@@ -105,6 +115,7 @@ export default async function ReportsPage({
     student: students.find((s) => s.id === l.student_id)?.name ?? "",
     grade: students.find((s) => s.id === l.student_id)?.grade ?? "",
     subject: subjects.find((s) => s.id === l.subject_id)?.name ?? "",
+    chapter: (l.note as string | null) ?? "",
     teacher: teacherName.get(l.teacher_id as string) ?? "",
   }));
 
@@ -153,7 +164,14 @@ export default async function ReportsPage({
                 const gap = last ? daysBetween(last, today) : null;
                 const level =
                   gap === null ? "bad" : gap <= 7 ? "ok" : gap <= 14 ? "warn" : "bad";
-                return { sub, last, gap, level, count: countInRange.get(key) ?? 0 };
+                return {
+                  sub,
+                  last,
+                  gap,
+                  level,
+                  count: countInRange.get(key) ?? 0,
+                  chapters: chapters.get(key) ?? [],
+                };
               });
 
             const total = cells.reduce((n, c) => n + c.count, 0);
@@ -174,6 +192,19 @@ export default async function ReportsPage({
                     </span>
                   ))}
                 </div>
+
+                {cells.some((c) => c.chapters.length > 0) && (
+                  <div className="chapters">
+                    {cells
+                      .filter((c) => c.chapters.length > 0)
+                      .map((c) => (
+                        <div className="chapter" key={c.sub.id} data-static="true">
+                          <span className="subj">{c.sub.name}</span>
+                          <span className="what">{c.chapters.join(" · ")}</span>
+                        </div>
+                      ))}
+                  </div>
+                )}
               </article>
             );
           })}

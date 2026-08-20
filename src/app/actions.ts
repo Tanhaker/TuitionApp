@@ -123,23 +123,57 @@ export async function toggleLesson(
   return { ok: true, on: true };
 }
 
-/** Attach or clear a note on a lesson this teacher already logged. */
+export type NoteResult = { ok: true; note: string | null } | { ok: false; error: string };
+
+/**
+ * Record which chapter or topic was covered in a lesson already logged.
+ *
+ * Deliberately a separate action from toggleLesson: logging that a subject
+ * happened must stay one tap, so the chapter is something a teacher adds after
+ * the fact, or never. An empty string clears it.
+ *
+ * Only ever touches this teacher's own row — two teachers taking the same child
+ * for the same subject each keep their own record of what they covered.
+ */
 export async function setLessonNote(
   studentId: string,
   subjectId: string,
   date: string,
   note: string
-) {
+): Promise<NoteResult> {
   const { supabase, userId } = await requireUser();
-  const { error } = await supabase
+
+  if (!isISO(date)) {
+    return { ok: false, error: "That date is not valid." };
+  }
+
+  const value = clean(note);
+
+  const { data, error } = await supabase
     .from("lessons")
-    .update({ note: clean(note) })
+    .update({ note: value })
     .eq("student_id", studentId)
     .eq("subject_id", subjectId)
     .eq("teacher_id", userId)
-    .eq("taught_on", date);
-  if (error) throw new Error("Could not save that note.");
+    .eq("taught_on", date)
+    .select("id");
+
+  if (error) {
+    return { ok: false, error: "Could not save that chapter. Check your connection." };
+  }
+  if (!data || data.length === 0) {
+    // No row matched: the lesson was un-logged in another tab, or by this
+    // teacher on another phone, between the tap and the save.
+    return {
+      ok: false,
+      error: "That lesson is no longer logged, so there was nothing to add a chapter to.",
+    };
+  }
+
   revalidatePath("/");
+  revalidatePath("/plan");
+  revalidatePath("/reports");
+  return { ok: true, note: value };
 }
 
 // --------------------------------------------------------------- students

@@ -89,12 +89,12 @@ export default async function TodayPage({
     await Promise.all([
       supabase
         .from("lessons")
-        .select("student_id, subject_id, teacher_id")
+        .select("student_id, subject_id, teacher_id, note")
         .eq("taught_on", date)
         .in("student_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]),
       supabase
         .from("lessons")
-        .select("student_id, subject_id, taught_on")
+        .select("student_id, subject_id, taught_on, note")
         .gte("taught_on", historyFrom)
         .lt("taught_on", date)
         .in("student_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]),
@@ -110,11 +110,14 @@ export default async function TodayPage({
   const teacherName = new Map((teachers ?? []).map((t) => [t.id as string, t.name as string]));
 
   const mineToday = new Set<string>();
+  // The chapter this teacher recorded against today's lesson, if any.
+  const myNoteToday = new Map<string, string>();
   const othersToday = new Map<string, Set<string>>();
   for (const l of todayLessons ?? []) {
     const key = `${l.student_id}|${l.subject_id}`;
     if (l.teacher_id === user.id) {
       mineToday.add(key);
+      if (l.note) myNoteToday.set(key, l.note as string);
     } else {
       const set = othersToday.get(l.student_id as string) ?? new Set<string>();
       set.add(teacherName.get(l.teacher_id as string) ?? "another teacher");
@@ -123,10 +126,17 @@ export default async function TodayPage({
   }
 
   const lastTaught = new Map<string, string>();
+  // The chapter recorded the last time this subject was taught, so a teacher
+  // picking the subject up again can see where it was left off.
+  const lastNote = new Map<string, string>();
   for (const l of history ?? []) {
     const key = `${l.student_id}|${l.subject_id}`;
     const prev = lastTaught.get(key);
-    if (!prev || (l.taught_on as string) > prev) lastTaught.set(key, l.taught_on as string);
+    if (!prev || (l.taught_on as string) > prev) {
+      lastTaught.set(key, l.taught_on as string);
+      if (l.note) lastNote.set(key, l.note as string);
+      else lastNote.delete(key);
+    }
   }
 
   const nextExam = new Map<string, string>();
@@ -146,6 +156,8 @@ export default async function TodayPage({
         on: mineToday.has(`${s.id}|${sub.id}`),
         lastTaught: lastTaught.get(`${s.id}|${sub.id}`) ?? null,
         examDate: nextExam.get(`${s.id}|${sub.id}`) ?? null,
+        note: myNoteToday.get(`${s.id}|${sub.id}`) ?? null,
+        lastNote: lastNote.get(`${s.id}|${sub.id}`) ?? null,
       })),
     alsoToday: [...(othersToday.get(s.id) ?? [])],
   }));
