@@ -1,6 +1,6 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { requireUserId } from "@/lib/auth";
 import TopBar from "@/components/TopBar";
 import Nav from "@/components/Nav";
 import { daysBetween, prettyDate, shiftDate, todayISO } from "@/lib/dates";
@@ -26,16 +26,13 @@ function score(daysToExam: number | null, daysSince: number | null) {
 
 export default async function PlanPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const userId = await requireUserId();
 
   const today = todayISO();
 
   const [{ data: subjectRows }, { data: links }] = await Promise.all([
     supabase.from("subjects").select("*").eq("active", true).order("sort_order"),
-    supabase.from("teacher_students").select("student_id").eq("teacher_id", user.id),
+    supabase.from("teacher_students").select("student_id").eq("teacher_id", userId),
   ]);
 
   const subjects = (subjectRows ?? []) as Subject[];

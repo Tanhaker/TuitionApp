@@ -1,21 +1,29 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { USER_HEADER } from "@/lib/user-header";
 
 /** Routes reachable without a session. Everything else needs one. */
 const PUBLIC_PATHS = ["/login", "/auth"];
 
 /**
- * Refreshes the auth token on every request and redirects signed-out users
- * to /login.
+ * Refreshes the auth token on every request, redirects signed-out users to
+ * /login, and passes the verified user id downstream so pages do not have to
+ * ask the auth server all over again.
  *
  * The response object matters here: `supabase.auth.getUser()` may issue a
  * refreshed cookie, and it has to be written onto the SAME response we return,
  * or the teacher gets silently signed out on the next navigation. That is why
- * the redirect below copies the cookies across instead of returning a fresh
+ * the redirects below copy the cookies across instead of returning a fresh
  * NextResponse.
  */
 export async function updateSession(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  const requestHeaders = new Headers(request.headers);
+  // Strip any inbound copy before we set our own. Without this a client could
+  // send the header themselves and choose which teacher the pages think they
+  // are — RLS would still block the data, but the pages would misbehave.
+  requestHeaders.delete(USER_HEADER);
+
+  let cookiesToApply: { name: string; value: string; options?: CookieOptions }[] = [];
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -26,22 +34,25 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet: { name: string; value: string; options?: CookieOptions }[]) {
-          for (const { name, value } of cookiesToSet) {
-            request.cookies.set(name, value);
-          }
-          response = NextResponse.next({ request });
-          for (const { name, value, options } of cookiesToSet) {
-            response.cookies.set(name, value, options);
-          }
+          cookiesToApply = cookiesToSet;
+          for (const { name, value } of cookiesToSet) request.cookies.set(name, value);
         },
       },
     }
   );
 
-  // Do not remove: this call is what actually refreshes the session.
+  // Do not remove: this call is what actually refreshes the session, and it is
+  // the one place the token is verified against the auth server.
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  if (user) requestHeaders.set(USER_HEADER, user.id);
+
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  for (const { name, value, options } of cookiesToApply) {
+    response.cookies.set(name, value, options);
+  }
 
   const { pathname } = request.nextUrl;
   const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));

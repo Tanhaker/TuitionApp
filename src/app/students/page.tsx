@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { requireUserId } from "@/lib/auth";
 import TopBar from "@/components/TopBar";
 import Nav from "@/components/Nav";
 import StudentManager from "@/components/StudentManager";
@@ -9,10 +9,7 @@ export const dynamic = "force-dynamic";
 
 export default async function StudentsPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const userId = await requireUserId();
 
   const [{ data: students }, { data: subjects }, { data: links }, { data: exams }] =
     await Promise.all([
@@ -23,7 +20,7 @@ export default async function StudentsPage() {
         .order("grade")
         .order("name"),
       supabase.from("subjects").select("*").eq("active", true).order("sort_order"),
-      supabase.from("teacher_students").select("student_id").eq("teacher_id", user.id),
+      supabase.from("teacher_students").select("student_id").eq("teacher_id", userId),
       supabase
         .from("exams")
         .select("id, student_id, subject_id, exam_date, title")

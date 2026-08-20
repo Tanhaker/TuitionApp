@@ -1,6 +1,37 @@
 import type { Metadata, Viewport } from "next";
+import { Fraunces, Inter, IBM_Plex_Mono } from "next/font/google";
 import RegisterSW from "@/components/RegisterSW";
 import "./globals.css";
+
+/**
+ * Fonts are self-hosted by next/font rather than pulled from Google at runtime.
+ *
+ * The old <link> to fonts.googleapis.com cost two extra DNS lookups and TLS
+ * handshakes before a single glyph could paint, on a phone on tuition wifi.
+ * next/font inlines the @font-face rules and serves the files from our own
+ * origin, so there is nothing third-party in the critical path.
+ *
+ * Latin subset only: Gujarati and Hindi names fall through to the system font,
+ * which handles those scripts properly. Inter has no Gujarati coverage anyway.
+ */
+const display = Fraunces({
+  subsets: ["latin"],
+  variable: "--font-display",
+  display: "swap",
+});
+
+const body = Inter({
+  subsets: ["latin"],
+  variable: "--font-body",
+  display: "swap",
+});
+
+const mono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Tuition Register",
@@ -22,15 +53,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
-        />
-      </head>
+    <html lang="en" className={`${display.variable} ${body.variable} ${mono.variable}`}>
       <body>
         {children}
         <RegisterSW />

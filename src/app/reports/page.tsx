@@ -1,10 +1,11 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { requireUserId } from "@/lib/auth";
 import TopBar from "@/components/TopBar";
 import Nav from "@/components/Nav";
 import CsvButton from "@/components/CsvButton";
 import DownloadTextButton from "@/components/DownloadTextButton";
+import ShareTextButton from "@/components/ShareTextButton";
 import ReportDayPicker from "@/components/ReportDayPicker";
 import { daysBetween, isISO, prettyDate, shiftDate, todayISO } from "@/lib/dates";
 import { buildTextReport, type ReportStudent } from "@/lib/report-text";
@@ -26,10 +27,7 @@ export default async function ReportsPage({
   const by = sp.by === "all" ? "all" : "me";
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const userId = await requireUserId();
 
   const today = todayISO();
 
@@ -43,7 +41,7 @@ export default async function ReportsPage({
 
   const [{ data: subjectRows }, { data: links }, { data: teachers }] = await Promise.all([
     supabase.from("subjects").select("*").eq("active", true).order("sort_order"),
-    supabase.from("teacher_students").select("student_id").eq("teacher_id", user.id),
+    supabase.from("teacher_students").select("student_id").eq("teacher_id", userId),
     supabase.from("teachers").select("id, name"),
   ]);
 
@@ -103,14 +101,14 @@ export default async function ReportsPage({
   if (by === "me") {
     // "Last taught" must mean "last taught BY ME" here, or the gap colours would
     // claim a subject is covered when a colleague covered it, not you.
-    inRangeQ = inRangeQ.eq("teacher_id", user.id);
-    everQ = everQ.eq("teacher_id", user.id);
+    inRangeQ = inRangeQ.eq("teacher_id", userId);
+    everQ = everQ.eq("teacher_id", userId);
   }
 
   const [{ data: inRange }, { data: everLessons }] = await Promise.all([inRangeQ, everQ]);
 
   const teacherName = new Map((teachers ?? []).map((t) => [t.id as string, t.name as string]));
-  const myName = teacherName.get(user.id) ?? "Teacher";
+  const myName = teacherName.get(userId) ?? "Teacher";
 
   const lastTaught = new Map<string, string>();
   for (const l of everLessons ?? []) {
@@ -254,7 +252,12 @@ export default async function ReportsPage({
             {singleDay ? prettyDate(to) : `${prettyDate(from)} → ${prettyDate(to)}`} ·{" "}
             {csvRows.length} lessons
           </span>
-          <div className="between" style={{ gap: 6 }}>
+          <div className="between" style={{ gap: 6, flexWrap: "wrap" }}>
+            <ShareTextButton
+              text={textReport}
+              title={singleDay ? `Register ${to}` : `Register ${from} to ${to}`}
+              disabled={taught.length === 0}
+            />
             <DownloadTextButton
               text={textReport}
               filename={`tuition-register-${stamp}.txt`}

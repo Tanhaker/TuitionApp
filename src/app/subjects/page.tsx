@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { requireUserId } from "@/lib/auth";
 import TopBar from "@/components/TopBar";
 import Nav from "@/components/Nav";
 import SubjectManager from "@/components/SubjectManager";
@@ -9,16 +9,13 @@ export const dynamic = "force-dynamic";
 
 export default async function SubjectsPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const userId = await requireUserId();
 
   // Retired subjects are included here — this is the one screen where you can
   // see and restore them.
   const [{ data: subjects }, { data: mine }] = await Promise.all([
     supabase.from("subjects").select("*").order("active", { ascending: false }).order("sort_order"),
-    supabase.from("teacher_subjects").select("subject_id").eq("teacher_id", user.id),
+    supabase.from("teacher_subjects").select("subject_id").eq("teacher_id", userId),
   ]);
 
   return (

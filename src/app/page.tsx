@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { requireUserId } from "@/lib/auth";
 import { todayISO, shiftDate } from "@/lib/dates";
 import type { Subject, Student } from "@/lib/types";
 import TopBar from "@/components/TopBar";
@@ -19,14 +19,11 @@ export default async function TodayPage({
   const scope = sp.scope === "all" ? "all" : "mine";
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  const userId = await requireUserId();
 
   const [{ data: teacher }, { data: subjectRows }, { data: links }, { data: subjectLinks }] =
     await Promise.all([
-      supabase.from("teachers").select("name").eq("id", user.id).maybeSingle(),
+      supabase.from("teachers").select("name").eq("id", userId).maybeSingle(),
       supabase
         .from("subjects")
         .select("*")
@@ -35,11 +32,11 @@ export default async function TodayPage({
       supabase
         .from("teacher_students")
         .select("student_id")
-        .eq("teacher_id", user.id),
+        .eq("teacher_id", userId),
       supabase
         .from("teacher_subjects")
         .select("subject_id")
-        .eq("teacher_id", user.id),
+        .eq("teacher_id", userId),
     ]);
 
   // teacher_subjects narrows the chips to what this teacher actually takes.
@@ -115,7 +112,7 @@ export default async function TodayPage({
   const othersToday = new Map<string, Set<string>>();
   for (const l of todayLessons ?? []) {
     const key = `${l.student_id}|${l.subject_id}`;
-    if (l.teacher_id === user.id) {
+    if (l.teacher_id === userId) {
       mineToday.add(key);
       if (l.note) myNoteToday.set(key, l.note as string);
     } else {

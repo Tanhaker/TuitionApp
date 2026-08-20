@@ -21,9 +21,9 @@
   --r: 10px;
   --shadow: 0 1px 0 var(--rule), 0 6px 18px -14px rgba(22, 35, 63, 0.5);
 
-  --display: "Fraunces", Georgia, serif;
-  --body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+  --display: var(--font-display), Georgia, serif;
+  --body: var(--font-body), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: var(--font-mono), ui-monospace, "SFMono-Regular", monospace;
 }
 
 * { box-sizing: border-box; }
@@ -221,6 +221,20 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .hint { font-size: 0.8rem; color: var(--ink-soft); line-height: 1.45; }
 .err { color: var(--red); font-size: 0.85rem; }
+
+/* ---------- loading skeleton ---------- */
+.skeleton .bar {
+  background: var(--rule);
+  border-radius: 6px;
+  opacity: 0.55;
+  animation: pulse 1.15s ease-in-out infinite;
+}
+.skeleton .chips { gap: 7px; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.7; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
