@@ -5,7 +5,8 @@ import TopBar from "@/components/TopBar";
 import Nav from "@/components/Nav";
 import CsvButton from "@/components/CsvButton";
 import DownloadTextButton from "@/components/DownloadTextButton";
-import { daysBetween, prettyDate, shiftDate, todayISO } from "@/lib/dates";
+import ReportDayPicker from "@/components/ReportDayPicker";
+import { daysBetween, isISO, prettyDate, shiftDate, todayISO } from "@/lib/dates";
 import { buildTextReport, type ReportStudent } from "@/lib/report-text";
 import type { Subject, Student } from "@/lib/types";
 
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ days?: string; scope?: string; by?: string }>;
+  searchParams: Promise<{ days?: string; scope?: string; by?: string; on?: string }>;
 }) {
   const sp = await searchParams;
   const days = [7, 30, 90].includes(Number(sp.days)) ? Number(sp.days) : 30;
@@ -31,7 +32,14 @@ export default async function ReportsPage({
   if (!user) redirect("/login");
 
   const today = todayISO();
-  const from = shiftDate(today, -days);
+
+  // `on` switches the report to a single day, for the daily send. It wins over
+  // the 7/30/90 window when present. Clamped to today: there is nothing to
+  // report from the future.
+  const onParam = sp.on && isISO(sp.on) ? (sp.on > today ? today : sp.on) : null;
+  const singleDay = onParam !== null;
+  const to = onParam ?? today;
+  const from = singleDay ? to : shiftDate(to, -days);
 
   const [{ data: subjectRows }, { data: links }, { data: teachers }] = await Promise.all([
     supabase.from("subjects").select("*").eq("active", true).order("sort_order"),
@@ -81,14 +89,15 @@ export default async function ReportsPage({
     .from("lessons")
     .select("student_id, subject_id, teacher_id, taught_on, note")
     .gte("taught_on", from)
-    .lte("taught_on", today)
+    .lte("taught_on", to)
     .in("student_id", ids)
     .order("taught_on");
 
   let everQ = supabase
     .from("lessons")
     .select("student_id, subject_id, taught_on")
-    .gte("taught_on", shiftDate(today, -365))
+    .gte("taught_on", shiftDate(to, -365))
+    .lte("taught_on", to)
     .in("student_id", ids);
 
   if (by === "me") {
@@ -143,7 +152,7 @@ export default async function ReportsPage({
       .map((sub) => {
         const key = `${s.id}|${sub.id}`;
         const last = lastTaught.get(key) ?? null;
-        const gap = last ? daysBetween(last, today) : null;
+        const gap = last ? daysBetween(last, to) : null;
         const level = gap === null ? "bad" : gap <= 7 ? "ok" : gap <= 14 ? "warn" : "bad";
         return {
           sub,
@@ -168,8 +177,9 @@ export default async function ReportsPage({
     {
       teacherName: myName,
       from,
-      to: today,
+      to,
       mine: by === "me",
+      singleDay,
       notTaught: notTaught.map((c) => c.student.name),
     },
     taught.map<ReportStudent>((c) => ({
@@ -189,21 +199,29 @@ export default async function ReportsPage({
   );
 
   const link = (d: number, sc: string, b: string) => `/reports?days=${d}&scope=${sc}&by=${b}`;
-  const stamp = `${from}-to-${today}`;
+  const dayLink = (d: string, sc: string, b: string) => `/reports?on=${d}&scope=${sc}&by=${b}`;
+  const stamp = singleDay ? to : `${from}-to-${today}`;
 
   return (
     <>
       <TopBar eyebrow="Coverage" title="Reports" />
       <main className="wrap stack" style={{ paddingTop: 12 }}>
         <div className="tabs">
+          <Link href={dayLink(today, scope, by)} style={{ flex: 1 }}>
+            <button data-active={singleDay} style={{ width: "100%" }}>
+              One day
+            </button>
+          </Link>
           {[7, 30, 90].map((d) => (
             <Link key={d} href={link(d, scope, by)} style={{ flex: 1 }}>
-              <button data-active={days === d} style={{ width: "100%" }}>
+              <button data-active={!singleDay && days === d} style={{ width: "100%" }}>
                 {d} days
               </button>
             </Link>
           ))}
         </div>
+
+        {singleDay && <ReportDayPicker on={to} scope={scope} by={by} />}
 
         <div className="tabs" style={{ marginTop: -4 }}>
           <Link href={link(days, "mine", by)} style={{ flex: 1 }}>
@@ -233,7 +251,8 @@ export default async function ReportsPage({
 
         <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
           <span className="eyebrow">
-            {prettyDate(from)} → {prettyDate(today)} · {csvRows.length} lessons
+            {singleDay ? prettyDate(to) : `${prettyDate(from)} → ${prettyDate(to)}`} ·{" "}
+            {csvRows.length} lessons
           </span>
           <div className="between" style={{ gap: 6 }}>
             <DownloadTextButton
@@ -247,9 +266,13 @@ export default async function ReportsPage({
 
         {taught.length === 0 ? (
           <div className="empty">
-            {by === "me"
-              ? "You have not logged any lessons in this period."
-              : "No lessons were logged in this period."}
+            {singleDay
+              ? by === "me"
+                ? "You logged no lessons on this day."
+                : "No lessons were logged on this day."
+              : by === "me"
+                ? "You have not logged any lessons in this period."
+                : "No lessons were logged in this period."}
           </div>
         ) : (
           <div className="register">
@@ -290,7 +313,11 @@ export default async function ReportsPage({
         {notTaught.length > 0 && (
           <div className="card stack">
             <span className="eyebrow">
-              {by === "me" ? "On your list, not taught by you" : "No lessons in this period"}
+              {by === "me"
+                ? singleDay
+                  ? "On your list, not taught by you today"
+                  : "On your list, not taught by you"
+                : "No lessons in this period"}
             </span>
             <div className="gapbar">
               {notTaught.map((c) => (

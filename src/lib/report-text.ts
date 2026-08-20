@@ -31,6 +31,8 @@ export type ReportMeta = {
   to: string;
   /** true when the report covers only this teacher's own lessons. */
   mine: boolean;
+  /** true when from and to are the same day: reads as a daily note instead. */
+  singleDay?: boolean;
   /** Students on the list with no lessons in this window; named, not detailed. */
   notTaught: string[];
 };
@@ -43,6 +45,16 @@ function day(iso: string): string {
 /** "20 August 2026" */
 function dayYear(iso: string): string {
   return fromISO(iso).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+/** "Thursday 20 August 2026" — the daily report leads with the weekday. */
+function weekdayFull(iso: string): string {
+  return fromISO(iso).toLocaleDateString("en-IN", {
+    weekday: "long",
     day: "numeric",
     month: "long",
     year: "numeric",
@@ -89,9 +101,11 @@ function wrap(text: string, width = 68): string {
 export function buildTextReport(meta: ReportMeta, students: ReportStudent[]): string {
   const lines: string[] = [];
 
-  lines.push("TUITION REGISTER");
+  lines.push(meta.singleDay ? "DAILY REGISTER" : "TUITION REGISTER");
   lines.push(
-    `${meta.teacherName}  |  ${dayYear(meta.from)} to ${dayYear(meta.to)}`
+    meta.singleDay
+      ? `${meta.teacherName}  |  ${weekdayFull(meta.to)}`
+      : `${meta.teacherName}  |  ${dayYear(meta.from)} to ${dayYear(meta.to)}`
   );
   lines.push(
     meta.mine
@@ -103,9 +117,13 @@ export function buildTextReport(meta: ReportMeta, students: ReportStudent[]): st
   if (students.length === 0) {
     lines.push(
       wrap(
-        meta.mine
-          ? "You have not logged any lessons in this period."
-          : "No lessons were logged in this period."
+        meta.singleDay
+          ? meta.mine
+            ? "You logged no lessons on this day."
+            : "No lessons were logged on this day."
+          : meta.mine
+            ? "You have not logged any lessons in this period."
+            : "No lessons were logged in this period."
       )
     );
   }
@@ -117,6 +135,29 @@ export function buildTextReport(meta: ReportMeta, students: ReportStudent[]): st
     lines.push("");
 
     const first = s.name.split(" ")[0];
+
+    if (meta.singleDay) {
+      // One day needs no date framing and no "last lesson was on" — the date is
+      // in the header and every lesson happened on it. Just say what was taught.
+      lines.push(
+        wrap(
+          meta.mine
+            ? `You taught ${first} ${list(s.subjects.map((sub) => sub.name))}.`
+            : `${first} was taught ${list(s.subjects.map((sub) => sub.name))}.`
+        )
+      );
+      lines.push("");
+      for (const sub of s.subjects) {
+        lines.push(
+          sub.chapters.length > 0
+            ? `  ${sub.name} - ${list(sub.chapters)}`
+            : `  ${sub.name} - no chapter recorded`
+        );
+      }
+      lines.push("");
+      continue;
+    }
+
     lines.push(
       wrap(
         meta.mine
@@ -143,15 +184,19 @@ export function buildTextReport(meta: ReportMeta, students: ReportStudent[]): st
 
   if (meta.notTaught.length > 0) {
     lines.push("");
-    lines.push("NOT TAUGHT BY YOU IN THIS PERIOD");
+    lines.push(meta.singleDay ? "NOT TAUGHT ON THIS DAY" : "NOT TAUGHT BY YOU IN THIS PERIOD");
     lines.push("");
     lines.push(
       wrap(
-        `${list(meta.notTaught)} ${
-          meta.notTaught.length === 1 ? "is" : "are"
-        } on your list but you logged no lessons for them between ${day(
-          meta.from
-        )} and ${day(meta.to)}.`
+        meta.singleDay
+          ? `${list(meta.notTaught)} ${
+              meta.notTaught.length === 1 ? "was" : "were"
+            } not taught by you on ${day(meta.to)}.`
+          : `${list(meta.notTaught)} ${
+              meta.notTaught.length === 1 ? "is" : "are"
+            } on your list but you logged no lessons for them between ${day(
+              meta.from
+            )} and ${day(meta.to)}.`
       )
     );
     lines.push("");
