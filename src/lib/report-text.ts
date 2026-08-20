@@ -1,4 +1,6 @@
-import { fromISO } from "@/lib/dates";
+// Relative with an explicit extension so Node's test runner can resolve this
+// module directly, without the bundler's "@/" alias.
+import { fromISO } from "./dates.ts";
 
 /**
  * Builds the written export — the register as prose rather than a spreadsheet.

@@ -5,9 +5,11 @@ import {
   addStudent,
   copyExamsToStudents,
   removeExam,
+  restoreStudent,
   retireStudent,
   setExam,
   setMyStudent,
+  updateStudent,
 } from "@/app/actions";
 import { daysBetween, prettyDateLong, todayISO } from "@/lib/dates";
 import type { Exam, Student, Subject } from "@/lib/types";
@@ -48,6 +50,13 @@ export default function StudentManager({
 
   const [form, setForm] = useState({ name: "", grade: "5", school: "" });
 
+  // Which student's edit form is open, and its working copy.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [edit, setEdit] = useState({ name: "", grade: "5", school: "" });
+
+  const active = students.filter((s) => s.active);
+  const retired = students.filter((s) => !s.active);
+
   async function run(fn: () => Promise<unknown>, success?: string) {
     setBusy(true);
     setError(null);
@@ -64,7 +73,7 @@ export default function StudentManager({
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return students
+    return active
       .filter((s) => (scope === "mine" ? isMine(s.id) : true))
       .filter(
         (s) =>
@@ -235,6 +244,23 @@ export default function StudentManager({
                     Exams
                     <span className="days">{upcoming.length ? upcoming.length : "none"}</span>
                   </button>
+
+                  <button
+                    className="chip"
+                    onClick={() => {
+                      const next = editingId === s.id ? null : s.id;
+                      setEditingId(next);
+                      if (next) {
+                        setEdit({
+                          name: s.name,
+                          grade: String(s.grade),
+                          school: s.school ?? "",
+                        });
+                      }
+                    }}
+                  >
+                    Edit
+                  </button>
                 </div>
 
                 {upcoming.length > 0 && !open && (
@@ -255,12 +281,86 @@ export default function StudentManager({
                   </div>
                 )}
 
+                {editingId === s.id && (
+                  <form
+                    className="stack"
+                    style={{
+                      marginTop: 10,
+                      borderTop: "1px solid var(--rule)",
+                      paddingTop: 10,
+                    }}
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      run(async () => {
+                        await updateStudent(s.id, {
+                          name: edit.name,
+                          grade: Number(edit.grade),
+                          school: edit.school,
+                        });
+                        setEditingId(null);
+                      }, "Saved.");
+                    }}
+                  >
+                    <div className="field">
+                      <label htmlFor={`edit-name-${s.id}`}>Name</label>
+                      <input
+                        id={`edit-name-${s.id}`}
+                        required
+                        value={edit.name}
+                        onChange={(e) => setEdit({ ...edit, name: e.target.value })}
+                      />
+                    </div>
+                    <div className="between" style={{ gap: 10, alignItems: "flex-end" }}>
+                      <div className="field" style={{ flex: 1 }}>
+                        <label htmlFor={`edit-grade-${s.id}`}>Class</label>
+                        <select
+                          id={`edit-grade-${s.id}`}
+                          value={edit.grade}
+                          onChange={(e) => setEdit({ ...edit, grade: e.target.value })}
+                        >
+                          {Array.from({ length: 12 }, (_, i) => i + 1).map((g) => (
+                            <option key={g} value={g}>
+                              {g}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="field" style={{ flex: 2 }}>
+                        <label htmlFor={`edit-school-${s.id}`}>School</label>
+                        <input
+                          id={`edit-school-${s.id}`}
+                          value={edit.school}
+                          onChange={(e) => setEdit({ ...edit, school: e.target.value })}
+                          placeholder="optional"
+                        />
+                      </div>
+                    </div>
+                    <div className="between" style={{ gap: 8 }}>
+                      <button className="btn" style={{ flex: 1 }} disabled={busy}>
+                        Save changes
+                      </button>
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        style={{ flex: 1 }}
+                        onClick={() => setEditingId(null)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    <p className="hint">
+                      Moving a child up a class changes which subjects show for
+                      them, since each subject covers a class range.
+                    </p>
+                  </form>
+                )}
+
                 {open && (
                   <ExamPanel
                     student={s}
                     subjects={applicable}
                     exams={upcoming}
-                    classmates={students.filter(
+                    classmates={active.filter(
                       (o) =>
                         o.id !== s.id &&
                         o.grade === s.grade &&
@@ -292,9 +392,40 @@ export default function StudentManager({
         </div>
       )}
 
+      {retired.length > 0 && (
+        <section className="card stack" style={{ marginTop: 16 }}>
+          <div className="between">
+            <span className="eyebrow">Retired</span>
+            <span className="eyebrow">{retired.length}</span>
+          </div>
+          <div className="chips">
+            {retired.map((s) => (
+              <button
+                key={s.id}
+                className="chip"
+                disabled={busy}
+                onClick={() =>
+                  run(async () => {
+                    await restoreStudent(s.id);
+                  }, `${s.name} is back on the register.`)
+                }
+              >
+                {s.name}
+                <span className="days">Class {s.grade} · restore</span>
+              </button>
+            ))}
+          </div>
+          <p className="hint">
+            Their lessons were kept. Restoring puts them back on the daily
+            register exactly as they were.
+          </p>
+        </section>
+      )}
+
       <p className="hint" style={{ marginTop: 14 }}>
         Retiring keeps a student&rsquo;s history and takes them off the daily
-        register. Nothing here is ever deleted.
+        register. Nothing here is ever deleted, and anyone retired can be
+        brought back from the list above.
       </p>
     </>
   );

@@ -13,10 +13,13 @@ export default async function StudentsPage() {
 
   const [{ data: students }, { data: subjects }, { data: links }, { data: exams }] =
     await Promise.all([
+      // Retired students are included: this is the only screen that can bring
+      // one back, and "retire, never delete" is meaningless if retiring is a
+      // one-way door.
       supabase
         .from("students")
         .select("id, name, grade, school, active")
-        .eq("active", true)
+        .order("active", { ascending: false })
         .order("grade")
         .order("name"),
       supabase.from("subjects").select("*").eq("active", true).order("sort_order"),
