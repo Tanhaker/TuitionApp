@@ -4,7 +4,9 @@ import { createClient } from "@/lib/supabase/server";
 import TopBar from "@/components/TopBar";
 import Nav from "@/components/Nav";
 import CsvButton from "@/components/CsvButton";
+import DownloadTextButton from "@/components/DownloadTextButton";
 import { daysBetween, prettyDate, shiftDate, todayISO } from "@/lib/dates";
+import { buildTextReport, type ReportStudent } from "@/lib/report-text";
 import type { Subject, Student } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -12,11 +14,15 @@ export const dynamic = "force-dynamic";
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ days?: string; scope?: string }>;
+  searchParams: Promise<{ days?: string; scope?: string; by?: string }>;
 }) {
   const sp = await searchParams;
   const days = [7, 30, 90].includes(Number(sp.days)) ? Number(sp.days) : 30;
   const scope = sp.scope === "all" ? "all" : "mine";
+  // `scope` picks WHICH STUDENTS. `by` picks WHOSE LESSONS. They are different
+  // questions: a student can be on your list but taught entirely by someone
+  // else that week, because teachers swap students around.
+  const by = sp.by === "all" ? "all" : "me";
 
   const supabase = await createClient();
   const {
@@ -71,21 +77,31 @@ export default async function ReportsPage({
     ? students.map((s) => s.id)
     : ["00000000-0000-0000-0000-000000000000"];
 
-  const [{ data: inRange }, { data: everLessons }] = await Promise.all([
-    supabase
-      .from("lessons")
-      .select("student_id, subject_id, teacher_id, taught_on, note")
-      .gte("taught_on", from)
-      .lte("taught_on", today)
-      .in("student_id", ids),
-    supabase
-      .from("lessons")
-      .select("student_id, subject_id, taught_on")
-      .gte("taught_on", shiftDate(today, -365))
-      .in("student_id", ids),
-  ]);
+  let inRangeQ = supabase
+    .from("lessons")
+    .select("student_id, subject_id, teacher_id, taught_on, note")
+    .gte("taught_on", from)
+    .lte("taught_on", today)
+    .in("student_id", ids)
+    .order("taught_on");
+
+  let everQ = supabase
+    .from("lessons")
+    .select("student_id, subject_id, taught_on")
+    .gte("taught_on", shiftDate(today, -365))
+    .in("student_id", ids);
+
+  if (by === "me") {
+    // "Last taught" must mean "last taught BY ME" here, or the gap colours would
+    // claim a subject is covered when a colleague covered it, not you.
+    inRangeQ = inRangeQ.eq("teacher_id", user.id);
+    everQ = everQ.eq("teacher_id", user.id);
+  }
+
+  const [{ data: inRange }, { data: everLessons }] = await Promise.all([inRangeQ, everQ]);
 
   const teacherName = new Map((teachers ?? []).map((t) => [t.id as string, t.name as string]));
+  const myName = teacherName.get(user.id) ?? "Teacher";
 
   const lastTaught = new Map<string, string>();
   for (const l of everLessons ?? []) {
@@ -95,18 +111,19 @@ export default async function ReportsPage({
   }
 
   const countInRange = new Map<string, number>();
-  // Chapters covered in this window, newest first, de-duplicated: the same
-  // chapter often runs across two or three sessions and listing it three times
-  // makes the report harder to read, not more accurate.
+  const lastInRange = new Map<string, string>();
+  // Chapters covered in this window, in teaching order, de-duplicated: a chapter
+  // running across three sessions should read once, not three times.
   const chapters = new Map<string, string[]>();
   for (const l of inRange ?? []) {
     const key = `${l.student_id}|${l.subject_id}`;
     countInRange.set(key, (countInRange.get(key) ?? 0) + 1);
+    lastInRange.set(key, l.taught_on as string);
     const note = (l.note as string | null)?.trim();
     if (note) {
-      const list = chapters.get(key) ?? [];
-      if (!list.includes(note)) list.push(note);
-      chapters.set(key, list);
+      const arr = chapters.get(key) ?? [];
+      if (!arr.includes(note)) arr.push(note);
+      chapters.set(key, arr);
     }
   }
 
@@ -119,7 +136,60 @@ export default async function ReportsPage({
     teacher: teacherName.get(l.teacher_id as string) ?? "",
   }));
 
-  const link = (d: number, sc: string) => `/reports?days=${d}&scope=${sc}`;
+  /** Everything needed to render one student's card, computed once. */
+  const cards = students.map((s) => {
+    const cells = subjects
+      .filter((sub) => s.grade >= sub.min_grade && s.grade <= sub.max_grade)
+      .map((sub) => {
+        const key = `${s.id}|${sub.id}`;
+        const last = lastTaught.get(key) ?? null;
+        const gap = last ? daysBetween(last, today) : null;
+        const level = gap === null ? "bad" : gap <= 7 ? "ok" : gap <= 14 ? "warn" : "bad";
+        return {
+          sub,
+          last,
+          gap,
+          level,
+          count: countInRange.get(key) ?? 0,
+          lastInWindow: lastInRange.get(key) ?? null,
+          chapters: chapters.get(key) ?? [],
+        };
+      });
+    return { student: s, cells, total: cells.reduce((n, c) => n + c.count, 0) };
+  });
+
+  // A student with no lessons in the window is not part of the record of what
+  // was taught — they are named separately instead of padding the report with
+  // empty entries.
+  const taught = cards.filter((c) => c.total > 0);
+  const notTaught = cards.filter((c) => c.total === 0);
+
+  const textReport = buildTextReport(
+    {
+      teacherName: myName,
+      from,
+      to: today,
+      mine: by === "me",
+      notTaught: notTaught.map((c) => c.student.name),
+    },
+    taught.map<ReportStudent>((c) => ({
+      name: c.student.name,
+      grade: c.student.grade,
+      school: c.student.school,
+      total: c.total,
+      subjects: c.cells
+        .filter((cell) => cell.count > 0)
+        .map((cell) => ({
+          name: cell.sub.name,
+          count: cell.count,
+          chapters: cell.chapters,
+          last: cell.lastInWindow,
+        })),
+    }))
+  );
+
+  const link = (d: number, sc: string, b: string) => `/reports?days=${d}&scope=${sc}&by=${b}`;
+  const stamp = `${from}-to-${today}`;
 
   return (
     <>
@@ -127,56 +197,63 @@ export default async function ReportsPage({
       <main className="wrap stack" style={{ paddingTop: 12 }}>
         <div className="tabs">
           {[7, 30, 90].map((d) => (
-            <Link key={d} href={link(d, scope)} style={{ flex: 1 }}>
+            <Link key={d} href={link(d, scope, by)} style={{ flex: 1 }}>
               <button data-active={days === d} style={{ width: "100%" }}>
                 {d} days
               </button>
             </Link>
           ))}
         </div>
+
         <div className="tabs" style={{ marginTop: -4 }}>
-          <Link href={link(days, "mine")} style={{ flex: 1 }}>
+          <Link href={link(days, "mine", by)} style={{ flex: 1 }}>
             <button data-active={scope === "mine"} style={{ width: "100%" }}>
               My students
             </button>
           </Link>
-          <Link href={link(days, "all")} style={{ flex: 1 }}>
+          <Link href={link(days, "all", by)} style={{ flex: 1 }}>
             <button data-active={scope === "all"} style={{ width: "100%" }}>
               Everyone
             </button>
           </Link>
         </div>
 
-        <div className="between">
-          <span className="eyebrow">
-            {prettyDate(from)} → {prettyDate(today)} · {csvRows.length} entries
-          </span>
-          <CsvButton rows={csvRows} filename={`tuition-log-${from}-to-${today}.csv`} />
+        <div className="tabs" style={{ marginTop: -4 }}>
+          <Link href={link(days, scope, "me")} style={{ flex: 1 }}>
+            <button data-active={by === "me"} style={{ width: "100%" }}>
+              Taught by me
+            </button>
+          </Link>
+          <Link href={link(days, scope, "all")} style={{ flex: 1 }}>
+            <button data-active={by === "all"} style={{ width: "100%" }}>
+              Any teacher
+            </button>
+          </Link>
         </div>
 
-        <div className="register">
-          {students.map((s) => {
-            const cells = subjects
-              .filter((sub) => s.grade >= sub.min_grade && s.grade <= sub.max_grade)
-              .map((sub) => {
-                const key = `${s.id}|${sub.id}`;
-                const last = lastTaught.get(key) ?? null;
-                const gap = last ? daysBetween(last, today) : null;
-                const level =
-                  gap === null ? "bad" : gap <= 7 ? "ok" : gap <= 14 ? "warn" : "bad";
-                return {
-                  sub,
-                  last,
-                  gap,
-                  level,
-                  count: countInRange.get(key) ?? 0,
-                  chapters: chapters.get(key) ?? [],
-                };
-              });
+        <div className="between" style={{ flexWrap: "wrap", gap: 8 }}>
+          <span className="eyebrow">
+            {prettyDate(from)} → {prettyDate(today)} · {csvRows.length} lessons
+          </span>
+          <div className="between" style={{ gap: 6 }}>
+            <DownloadTextButton
+              text={textReport}
+              filename={`tuition-register-${stamp}.txt`}
+              disabled={taught.length === 0}
+            />
+            <CsvButton rows={csvRows} filename={`tuition-log-${stamp}.csv`} />
+          </div>
+        </div>
 
-            const total = cells.reduce((n, c) => n + c.count, 0);
-
-            return (
+        {taught.length === 0 ? (
+          <div className="empty">
+            {by === "me"
+              ? "You have not logged any lessons in this period."
+              : "No lessons were logged in this period."}
+          </div>
+        ) : (
+          <div className="register">
+            {taught.map(({ student: s, cells, total }) => (
               <article className="row" key={s.id}>
                 <header>
                   <span className="name">{s.name}</span>
@@ -206,14 +283,34 @@ export default async function ReportsPage({
                   </div>
                 )}
               </article>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        )}
+
+        {notTaught.length > 0 && (
+          <div className="card stack">
+            <span className="eyebrow">
+              {by === "me" ? "On your list, not taught by you" : "No lessons in this period"}
+            </span>
+            <div className="gapbar">
+              {notTaught.map((c) => (
+                <span className="gap" key={c.student.id} data-level="bad">
+                  {c.student.name} · Class {c.student.grade}
+                </span>
+              ))}
+            </div>
+            <p className="hint">
+              These are left out of both exports, because nothing was taught to
+              record. They are listed here so a gap is still visible.
+            </p>
+          </div>
+        )}
 
         <p className="hint">
           Green means taught within a week, amber within two, red means over two
           weeks or never. The number in brackets is how many sessions in this
-          window.
+          window. <strong>Taught by me</strong> counts only your own lessons —
+          use it when a student is shared with another teacher.
         </p>
       </main>
       <Nav />
