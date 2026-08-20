@@ -3,8 +3,19 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { looksLikePhone, toE164 } from "@/lib/phone";
 
+/**
+ * The one client component that talks to Supabase directly.
+ *
+ * Sign-in has to run in the browser so @supabase/ssr can write the session
+ * cookies the middleware then reads on every subsequent request. Every other
+ * read and write in the app goes through a server component or a server action
+ * — see src/app/actions.ts.
+ *
+ * There is no sign-up form: the six teachers are created once in the Supabase
+ * dashboard. Public sign-up on a shared tuition register would be a way in for
+ * anyone who guessed the URL.
+ */
 /**
  * Turn a Supabase auth error into something a teacher can act on.
  *
@@ -16,14 +27,10 @@ import { looksLikePhone, toE164 } from "@/lib/phone";
  */
 function describeSignInError(error: { message: string; name?: string; status?: number }): string {
   if (error.message === "Invalid login credentials") {
-    return "That phone number or email and password do not match. Check them and try again.";
+    return "That email and password do not match. Check them and try again.";
   }
   if (/not confirmed/i.test(error.message)) {
     return "That account has not been confirmed yet. Whoever set it up needs to tick Auto Confirm in the Supabase dashboard.";
-  }
-  // Hit when a teacher signs in by phone but the Phone provider is still off.
-  if (/phone.*(disabled|not enabled)|unsupported phone/i.test(error.message)) {
-    return "Phone sign-in is not switched on for this app yet. Use your email for now, or ask for the Phone provider to be enabled in Supabase.";
   }
   if (/signups not allowed|signup is disabled/i.test(error.message)) {
     return "That account does not exist. Accounts are created by whoever set up the tuition — ask them to add you.";
@@ -42,18 +49,6 @@ function describeSignInError(error: { message: string; name?: string; status?: n
   return `Could not sign in (${error.message}).`;
 }
 
-/**
- * The one client component that talks to Supabase directly.
- *
- * Sign-in has to run in the browser so @supabase/ssr can write the session
- * cookies the middleware then reads on every subsequent request. Every other
- * read and write in the app goes through a server component or a server action
- * — see src/app/actions.ts.
- *
- * There is no sign-up form: the six teachers are created once in the Supabase
- * dashboard. Public sign-up on a shared tuition register would be a way in for
- * anyone who guessed the URL.
- */
 export default function LoginForm({
   next,
   setupError,
@@ -64,7 +59,7 @@ export default function LoginForm({
 }) {
   const router = useRouter();
 
-  const [identifier, setIdentifier] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -75,21 +70,10 @@ export default function LoginForm({
     setError(null);
 
     const supabase = createClient();
-
-    // A teacher may be set up with either a phone number or an email. Decide
-    // which one they typed rather than making them pick from a dropdown.
-    const typed = identifier.trim();
-    const phone = looksLikePhone(typed) ? toE164(typed) : null;
-
-    if (looksLikePhone(typed) && !phone) {
-      setError("That does not look like a complete phone number. Include all 10 digits.");
-      setBusy(false);
-      return;
-    }
-
-    const { error } = phone
-      ? await supabase.auth.signInWithPassword({ phone, password })
-      : await supabase.auth.signInWithPassword({ email: typed, password });
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
 
     if (error) {
       setError(describeSignInError(error));
@@ -128,19 +112,16 @@ export default function LoginForm({
 
       <form className="card stack" onSubmit={submit}>
         <div className="field">
-          <label htmlFor="identifier">Phone number or email</label>
+          <label htmlFor="email">Email</label>
           <input
-            id="identifier"
-            type="text"
+            id="email"
+            type="email"
             inputMode="email"
             autoComplete="username"
             autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
             required
-            placeholder="9876543210"
-            value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
           />
         </div>
 
@@ -164,9 +145,8 @@ export default function LoginForm({
       </form>
 
       <p className="hint" style={{ marginTop: 14 }}>
-        Use whichever your account was set up with &mdash; a phone number or an
-        email. You stay signed in on this phone. If you have forgotten your
-        password, ask whoever set up the tuition to reset it.
+        You stay signed in on this phone. If you have forgotten your password,
+        ask whoever set up the tuition&rsquo;s Supabase project to reset it.
       </p>
     </main>
   );
