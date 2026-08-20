@@ -204,6 +204,20 @@ export default async function ReportsPage({
     <>
       <TopBar eyebrow="Coverage" title="Reports" />
       <main className="wrap stack" style={{ paddingTop: 12 }}>
+        {/* Three stacked rows of buttons used to eat the top of the screen
+            before any report was visible. <details> collapses them behind one
+            line and needs no JavaScript, so it works in the loading state too. */}
+        <details className="filters">
+          <summary>
+            <span className="mono">
+              {singleDay ? prettyDate(to) : `${days} days`} · {scope === "mine" ? "my students" : "everyone"} ·{" "}
+              {by === "me" ? "taught by me" : "any teacher"}
+            </span>
+            <span className="chev" aria-hidden="true">
+              ⌄
+            </span>
+          </summary>
+          <div className="filters-body">
         <div className="tabs">
           <Link href={dayLink(today, scope, by)} style={{ flex: 1 }}>
             <button data-active={singleDay} style={{ width: "100%" }}>
@@ -218,6 +232,8 @@ export default async function ReportsPage({
             </Link>
           ))}
         </div>
+          </div>
+        </details>
 
         {singleDay && <ReportDayPicker on={to} scope={scope} by={by} />}
 

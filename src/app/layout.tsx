@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Inter, IBM_Plex_Mono } from "next/font/google";
 import RegisterSW from "@/components/RegisterSW";
+import ThemeToggle from "@/components/ThemeToggle";
 import "./globals.css";
 
 /**
@@ -42,7 +43,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#faf7f0",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#faf7f0" },
+    { media: "(prefers-color-scheme: dark)", color: "#171714" },
+  ],
   width: "device-width",
   initialScale: 1,
   // The app is a form-heavy tool used one-handed; letting iOS zoom on an input
@@ -55,6 +59,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${display.variable} ${body.variable} ${mono.variable}`}>
       <body>
+        {/* Applies the saved theme before first paint, so a dark-mode teacher
+            never sees a frame of cream. Inline and synchronous on purpose. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||t==='light'){document.documentElement.setAttribute('data-theme',t)}}catch(e){}})()",
+          }}
+        />
         {children}
         <RegisterSW />
       </body>

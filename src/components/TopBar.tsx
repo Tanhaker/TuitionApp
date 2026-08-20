@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { signOut } from "@/app/actions";
+import ThemeToggle from "@/components/ThemeToggle";
 
 /**
  * Sticky header. The eyebrow says which screen you are on, the title says
@@ -15,6 +16,7 @@ export default function TopBar({ eyebrow, title }: { eyebrow: string; title: str
           <h1>{title}</h1>
         </div>
         <div className="between" style={{ gap: 6 }}>
+          <ThemeToggle />
           <Link href="/subjects" className="eyebrow" aria-label="Subjects">
             Subjects
           </Link>

@@ -24,6 +24,22 @@ export type RowData = {
   alsoToday: string[];
 };
 
+/**
+ * A short buzz to confirm a tap landed.
+ *
+ * This app is used one-handed in a noisy room, often without looking straight
+ * at the screen. A 12ms pulse says "that saved" without the teacher having to
+ * check. Silently absent on iOS Safari, which does not implement vibrate — so
+ * it is a bonus, never the only confirmation.
+ */
+function buzz(pattern: number | number[]) {
+  try {
+    navigator.vibrate?.(pattern);
+  } catch {
+    // Some browsers throw if the page is not visible. Nothing depends on this.
+  }
+}
+
 export default function LogGrid({
   rows,
   date,
@@ -72,9 +88,11 @@ export default function LogGrid({
       const res = await toggleLesson(studentId, subjectId, date);
       if (!res.ok) {
         revert();
+        buzz([40, 60, 40]);
         setError(res.error);
         return;
       }
+      buzz(res.on ? 12 : [8, 40, 8]);
       setFlip((f) => ({ ...f, [key]: res.on }));
       if (!res.on) {
         // The lesson is gone, so its chapter went with it. Drop any local copy
@@ -87,6 +105,7 @@ export default function LogGrid({
       // Only transport failures reach here now — the action returns its own
       // errors as values. Anything thrown means the request never completed.
       revert();
+      buzz([40, 60, 40]);
       setError("Could not save. Check your connection and tap again.");
     } finally {
       setPending((p) => ({ ...p, [key]: false }));
