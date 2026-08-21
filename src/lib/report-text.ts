@@ -1,6 +1,7 @@
 // Relative with an explicit extension so Node's test runner can resolve this
 // module directly, without the bundler's "@/" alias.
 import { fromISO } from "./dates.ts";
+import { gradeLabel } from "./grades.ts";
 
 /**
  * Builds the written export — the register as prose rather than a spreadsheet.
@@ -132,7 +133,7 @@ export function buildTextReport(meta: ReportMeta, students: ReportStudent[]): st
 
   for (const s of students) {
     lines.push("");
-    const where = s.school ? `Class ${s.grade}, ${s.school}` : `Class ${s.grade}`;
+    const where = s.school ? `${gradeLabel(s.grade)}, ${s.school}` : gradeLabel(s.grade);
     lines.push(`${s.name.toUpperCase()} - ${where}`);
     lines.push("");
 

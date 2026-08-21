@@ -10,6 +10,7 @@ import ReportDayPicker from "@/components/ReportDayPicker";
 import { daysBetween, isISO, prettyDate, shiftDate, todayISO } from "@/lib/dates";
 import { buildTextReport, type ReportStudent } from "@/lib/report-text";
 import type { Subject, Student } from "@/lib/types";
+import { gradeLabel, gradeShort } from "@/lib/grades";
 
 export const dynamic = "force-dynamic";
 
@@ -137,7 +138,7 @@ export default async function ReportsPage({
   const csvRows = (inRange ?? []).map((l) => ({
     date: l.taught_on as string,
     student: students.find((s) => s.id === l.student_id)?.name ?? "",
-    grade: students.find((s) => s.id === l.student_id)?.grade ?? "",
+    grade: gradeShort(students.find((s) => s.id === l.student_id)?.grade ?? 0),
     subject: subjects.find((s) => s.id === l.subject_id)?.name ?? "",
     chapter: (l.note as string | null) ?? "",
     teacher: teacherName.get(l.teacher_id as string) ?? "",
@@ -299,7 +300,7 @@ export default async function ReportsPage({
               <article className="row" key={s.id}>
                 <header>
                   <span className="name">{s.name}</span>
-                  <span className="grade">Class {s.grade}</span>
+                  <span className="grade">{gradeLabel(s.grade)}</span>
                   <span className="meta">{total} sessions</span>
                 </header>
                 <div className="gapbar">
@@ -341,7 +342,7 @@ export default async function ReportsPage({
             <div className="gapbar">
               {notTaught.map((c) => (
                 <span className="gap" key={c.student.id} data-level="bad">
-                  {c.student.name} · Class {c.student.grade}
+                  {c.student.name} · {gradeLabel(c.student.grade)}
                 </span>
               ))}
             </div>

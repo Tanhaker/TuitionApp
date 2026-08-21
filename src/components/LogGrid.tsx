@@ -5,6 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 import { setLessonNote, toggleLesson } from "@/app/actions";
 import { daysBetween, prettyDate, shiftDate, todayISO } from "@/lib/dates";
 import type { Student } from "@/lib/types";
+import { gradeLabel } from "@/lib/grades";
 
 export type ChipData = {
   id: string;
@@ -192,7 +193,7 @@ export default function LogGrid({
             <article className="row" key={row.student.id}>
               <header>
                 <span className="name">{row.student.name}</span>
-                <span className="grade">Class {row.student.grade}</span>
+                <span className="grade">{gradeLabel(row.student.grade)}</span>
                 {row.alsoToday.length > 0 && (
                   <span className="meta">also: {row.alsoToday.join(", ")}</span>
                 )}

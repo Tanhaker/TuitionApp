@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { isISO, todayISO } from "@/lib/dates";
+import { gradeLabel, isValidGrade } from "@/lib/grades";
 
 /**
  * Every database write in the app lives in this file.
@@ -187,8 +188,8 @@ export async function addStudent(input: {
 
   const name = clean(input.name);
   if (!name) throw new Error("Enter the student's name.");
-  if (!Number.isInteger(input.grade) || input.grade < 1 || input.grade > 12) {
-    throw new Error("Pick a class between 1 and 12.");
+  if (!isValidGrade(input.grade)) {
+    throw new Error("Pick a class between LKG and Class 12.");
   }
 
   const { data, error } = await supabase
@@ -204,8 +205,8 @@ export async function addStudent(input: {
     if (error.code === "23505") {
       throw new Error(
         name +
-          " is already on the tuition list for Class " +
-          input.grade +
+          " is already on the tuition list for " +
+          gradeLabel(input.grade) +
           '. Find them below and tap "Add to my list".'
       );
     }
@@ -232,8 +233,8 @@ export async function updateStudent(
     fields.name = name;
   }
   if (patch.grade !== undefined) {
-    if (!Number.isInteger(patch.grade) || patch.grade < 1 || patch.grade > 12) {
-      throw new Error("Pick a class between 1 and 12.");
+    if (!isValidGrade(patch.grade)) {
+      throw new Error("Pick a class between LKG and Class 12.");
     }
     fields.grade = patch.grade;
   }
@@ -398,6 +399,9 @@ export async function addSubject(input: { name: string; minGrade: number; maxGra
 
   const name = clean(input.name);
   if (!name) throw new Error("Enter a subject name.");
+  if (!isValidGrade(input.minGrade) || !isValidGrade(input.maxGrade)) {
+    throw new Error("Pick a class range between LKG and Class 12.");
+  }
   if (input.minGrade > input.maxGrade) {
     throw new Error("The lowest class cannot be higher than the highest class.");
   }

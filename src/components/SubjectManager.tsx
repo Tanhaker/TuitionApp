@@ -9,6 +9,7 @@ import {
   updateSubject,
 } from "@/app/actions";
 import type { Subject } from "@/lib/types";
+import { GRADES, gradeLabel, gradeShort } from "@/lib/grades";
 
 /**
  * One shared subject list for the whole tuition, plus a per-teacher filter.
@@ -115,8 +116,8 @@ export default function SubjectManager({
         </div>
 
         <p className="hint">
-          Class range decides which children see a subject: EVS 1&ndash;5 shows on
-          a Class 3 row, Science 6&ndash;12 does not.
+          Class range decides which children see a subject: Rhymes LKG&ndash;UKG
+          shows on a UKG row, Science 6&ndash;12 does not.
         </p>
 
         {adding ? (
@@ -152,9 +153,9 @@ export default function SubjectManager({
                   value={form.min}
                   onChange={(e) => setForm({ ...form, min: e.target.value })}
                 >
-                  {Array.from({ length: 12 }, (_, i) => i + 1).map((g) => (
+                  {GRADES.map((g) => (
                     <option key={g} value={g}>
-                      {g}
+                      {gradeLabel(g)}
                     </option>
                   ))}
                 </select>
@@ -166,9 +167,9 @@ export default function SubjectManager({
                   value={form.max}
                   onChange={(e) => setForm({ ...form, max: e.target.value })}
                 >
-                  {Array.from({ length: 12 }, (_, i) => i + 1).map((g) => (
+                  {GRADES.map((g) => (
                     <option key={g} value={g}>
-                      {g}
+                      {gradeLabel(g)}
                     </option>
                   ))}
                 </select>
@@ -200,7 +201,7 @@ export default function SubjectManager({
               <header>
                 <span className="name">{s.name}</span>
                 <span className="grade">
-                  {s.min_grade}&ndash;{s.max_grade}
+                  {gradeShort(s.min_grade)}&ndash;{gradeShort(s.max_grade)}
                 </span>
               </header>
 
@@ -217,9 +218,9 @@ export default function SubjectManager({
                       })
                     }
                   >
-                    {Array.from({ length: 12 }, (_, i) => i + 1).map((g) => (
+                    {GRADES.map((g) => (
                       <option key={g} value={g}>
-                        from {g}
+                        from {gradeShort(g)}
                       </option>
                     ))}
                   </select>
@@ -234,9 +235,9 @@ export default function SubjectManager({
                       })
                     }
                   >
-                    {Array.from({ length: 12 }, (_, i) => i + 1).map((g) => (
+                    {GRADES.map((g) => (
                       <option key={g} value={g}>
-                        to {g}
+                        to {gradeShort(g)}
                       </option>
                     ))}
                   </select>

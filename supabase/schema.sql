@@ -37,6 +37,7 @@ create trigger on_auth_user_created
 create table if not exists public.subjects (
   id          uuid primary key default gen_random_uuid(),
   name        text not null unique,
+  -- Class range this subject applies to. -1 = LKG, 0 = UKG.
   min_grade   int  not null default 1,
   max_grade   int  not null default 12,
   sort_order  int  not null default 0,
@@ -47,7 +48,8 @@ create table if not exists public.subjects (
 create table if not exists public.students (
   id          uuid primary key default gen_random_uuid(),
   name        text not null,
-  grade       int  not null check (grade between 1 and 12),
+  -- -1 = LKG, 0 = UKG, 1..12 = Class 1..12. See src/lib/grades.ts.
+  grade       int  not null check (grade between -1 and 12),
   school      text,
   active      boolean not null default true,
   created_by  uuid references public.teachers(id) on delete set null,
@@ -204,3 +206,29 @@ end $$;
 --   group by 1 having count(*) > 1;
 create unique index if not exists subjects_name_lower_uniq
   on public.subjects (lower(trim(name)));
+
+
+-- ============================================================
+-- Kindergarten levels
+--
+-- Added after the fact, so the original check constraint has to be widened on
+-- databases that already exist. Re-runnable: the constraint is dropped by name
+-- first, and the name below is the one Postgres generates for an inline column
+-- check on students(grade).
+-- ============================================================
+alter table public.students drop constraint if exists students_grade_check;
+alter table public.students add constraint students_grade_check
+  check (grade between -1 and 12);
+
+-- Subjects the little ones take. Ranges are a starting point — adjust them on
+-- the Subjects screen rather than here once the app is running.
+insert into public.subjects (name, min_grade, max_grade, sort_order) values
+  ('Rhymes',      -1, 0, 20),
+  ('Handwriting', -1, 2, 21)
+on conflict (name) do nothing;
+
+-- Let the existing early-years subjects reach down into kindergarten. Only
+-- widens, never narrows, so a hand-tuned range is left alone.
+update public.subjects set min_grade = -1
+  where lower(trim(name)) in ('drawing', 'english', 'maths', 'gujarati')
+    and min_grade > -1;

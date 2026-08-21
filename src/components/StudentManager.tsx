@@ -13,6 +13,7 @@ import {
 } from "@/app/actions";
 import { daysBetween, prettyDateLong, todayISO } from "@/lib/dates";
 import type { Exam, Student, Subject } from "@/lib/types";
+import { GRADES, gradeLabel, gradeMatchesQuery } from "@/lib/grades";
 
 /**
  * The roster screen.
@@ -80,7 +81,7 @@ export default function StudentManager({
           !q ||
           s.name.toLowerCase().includes(q) ||
           (s.school ?? "").toLowerCase().includes(q) ||
-          String(s.grade) === q
+          gradeMatchesQuery(s.grade, q)
       );
     // mineFlip and myIds are the inputs isMine() closes over, so they are the
     // deps even though isMine itself is not referenced by name here.
@@ -107,7 +108,7 @@ export default function StudentManager({
       <div className="field" style={{ marginBottom: 10 }}>
         <input
           type="search"
-          placeholder="Search name, school or class"
+          placeholder="Search name, school or class (try LKG)"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Search students"
@@ -157,9 +158,9 @@ export default function StudentManager({
                 value={form.grade}
                 onChange={(e) => setForm({ ...form, grade: e.target.value })}
               >
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((g) => (
+                {GRADES.map((g) => (
                   <option key={g} value={g}>
-                    {g}
+                    {gradeLabel(g)}
                   </option>
                 ))}
               </select>
@@ -220,7 +221,7 @@ export default function StudentManager({
               <article className="row" key={s.id}>
                 <header>
                   <span className="name">{s.name}</span>
-                  <span className="grade">Class {s.grade}</span>
+                  <span className="grade">{gradeLabel(s.grade)}</span>
                   {s.school && <span className="meta">{s.school}</span>}
                 </header>
 
@@ -318,9 +319,9 @@ export default function StudentManager({
                           value={edit.grade}
                           onChange={(e) => setEdit({ ...edit, grade: e.target.value })}
                         >
-                          {Array.from({ length: 12 }, (_, i) => i + 1).map((g) => (
+                          {GRADES.map((g) => (
                             <option key={g} value={g}>
-                              {g}
+                              {gradeLabel(g)}
                             </option>
                           ))}
                         </select>
@@ -411,7 +412,7 @@ export default function StudentManager({
                 }
               >
                 {s.name}
-                <span className="days">Class {s.grade} · restore</span>
+                <span className="days">{gradeLabel(s.grade)} · restore</span>
               </button>
             ))}
           </div>

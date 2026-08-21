@@ -60,6 +60,14 @@ describe("range report", () => {
     assert.match(out, /no chapters were recorded/);
   });
 
+  test("names kindergarten properly instead of 'Class -1'", () => {
+    const out = buildTextReport(range, [
+      { ...aarav, name: "Meera Shah", grade: -1, school: "Little Star" },
+    ]);
+    assert.match(out, /MEERA SHAH - LKG, Little Star/);
+    assert.doesNotMatch(out, /Class -1|Class 0/);
+  });
+
   test("omits the school when there is none", () => {
     const out = buildTextReport(range, [{ ...aarav, school: null }]);
     assert.match(out, /AARAV PATEL - Class 5\n/);

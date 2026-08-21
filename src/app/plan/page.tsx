@@ -5,6 +5,7 @@ import TopBar from "@/components/TopBar";
 import Nav from "@/components/Nav";
 import { daysBetween, prettyDate, shiftDate, todayISO } from "@/lib/dates";
 import type { Subject, Student } from "@/lib/types";
+import { gradeLabel } from "@/lib/grades";
 
 export const dynamic = "force-dynamic";
 
@@ -146,7 +147,7 @@ export default async function PlanPage() {
           .sort((a, b) => a[0] - b[0])
           .map(([grade, list]) => (
             <section className="card stack" key={grade}>
-              <h2>Class {grade}</h2>
+              <h2>{gradeLabel(grade)}</h2>
               {list.map((i) => (
                 <div
                   className="between"
