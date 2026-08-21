@@ -40,6 +40,40 @@ function clean(value: string | null | undefined): string | null {
   return trimmed.length ? trimmed : null;
 }
 
+/**
+ * The shape every write returns. A failure is a value, never a throw.
+ *
+ * Next strips the message from anything thrown out of a server action in a
+ * production build and replaces it with a digest — which surfaces in the
+ * browser as React error #441, "an error occurred in the Server Components
+ * render but no message was provided". That is useless to a teacher and
+ * useless to debug. So the message has to travel back as data.
+ */
+export type ActionResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Runs a write and converts a thrown message into a returned one.
+ *
+ * redirect() works by throwing a special error, so that one must be allowed
+ * through or a signed-out teacher would be told "Something went wrong" instead
+ * of being sent to the login page.
+ */
+async function guard(fn: () => Promise<unknown>): Promise<ActionResult> {
+  try {
+    await fn();
+    return { ok: true };
+  } catch (e) {
+    const digest = (e as { digest?: string })?.digest;
+    if (typeof digest === "string" && (digest.startsWith("NEXT_REDIRECT") || digest === "NEXT_NOT_FOUND")) {
+      throw e;
+    }
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Something went wrong. Try again.",
+    };
+  }
+}
+
 // ---------------------------------------------------------------- lessons
 
 /**
@@ -184,114 +218,137 @@ export async function addStudent(input: {
   grade: number;
   school?: string | null;
 }) {
-  const { supabase, userId } = await requireUser();
+  return guard(async () => {
+    const { supabase, userId } = await requireUser();
 
-  const name = clean(input.name);
-  if (!name) throw new Error("Enter the student's name.");
-  if (!isValidGrade(input.grade)) {
-    throw new Error("Pick a class between LKG and Class 12.");
-  }
-
-  const { data, error } = await supabase
-    .from("students")
-    .insert({ name, grade: input.grade, school: clean(input.school), created_by: userId })
-    .select("id")
-    .single();
-
-  if (error) {
-    // The partial unique index on (lower(trim(name)), grade) where active.
-    // Students are shared tuition-wide, so this means another teacher already
-    // added the same child — not a mistake this teacher made.
-    if (error.code === "23505") {
-      throw new Error(
-        name +
-          " is already on the tuition list for " +
-          gradeLabel(input.grade) +
-          '. Find them below and tap "Add to my list".'
-      );
+    const name = clean(input.name);
+    if (!name) throw new Error("Enter the student's name.");
+    if (!isValidGrade(input.grade)) {
+      throw new Error("Pick a class between LKG and Class 12.");
     }
-    throw new Error("Could not add that student.");
-  }
 
-  // Whoever adds a student is presumably teaching them.
-  await supabase.from("teacher_students").insert({ teacher_id: userId, student_id: data.id });
+    const { data, error } = await supabase
+      .from("students")
+      .insert({ name, grade: input.grade, school: clean(input.school), created_by: userId })
+      .select("id")
+      .single();
 
-  revalidateAll();
-  return { id: data.id as string };
+    if (error) {
+      // The partial unique index on (lower(trim(name)), grade) where active.
+      // Students are shared tuition-wide, so this means another teacher already
+      // added the same child — not a mistake this teacher made.
+      if (error.code === "23505") {
+        throw new Error(
+          name +
+            " is already on the tuition list for " +
+            gradeLabel(input.grade) +
+            '. Find them below and tap "Add to my list".'
+        );
+      }
+      // 23514 = check constraint. In practice this is the grade range: a
+      // database that has not had the LKG/UKG migration applied still carries
+      // `check (grade between 1 and 12)` and rejects kindergarten outright.
+      if (error.code === "23514") {
+        throw new Error(
+          "The database does not allow that class yet. Re-run supabase/schema.sql in the Supabase SQL editor to add LKG and UKG."
+        );
+      }
+      throw new Error("Could not add that student.");
+    }
+
+    // Whoever adds a student is presumably teaching them.
+    await supabase.from("teacher_students").insert({ teacher_id: userId, student_id: data.id });
+
+    revalidateAll();
+    return { id: data.id as string };
+  });
 }
 
 export async function updateStudent(
   studentId: string,
   patch: { name?: string; grade?: number; school?: string | null }
 ) {
-  const { supabase } = await requireUser();
+  return guard(async () => {
+    const { supabase } = await requireUser();
 
-  const fields: Record<string, unknown> = {};
-  if (patch.name !== undefined) {
-    const name = clean(patch.name);
-    if (!name) throw new Error("The name cannot be empty.");
-    fields.name = name;
-  }
-  if (patch.grade !== undefined) {
-    if (!isValidGrade(patch.grade)) {
-      throw new Error("Pick a class between LKG and Class 12.");
+    const fields: Record<string, unknown> = {};
+    if (patch.name !== undefined) {
+      const name = clean(patch.name);
+      if (!name) throw new Error("The name cannot be empty.");
+      fields.name = name;
     }
-    fields.grade = patch.grade;
-  }
-  if (patch.school !== undefined) fields.school = clean(patch.school);
-  if (Object.keys(fields).length === 0) return;
+    if (patch.grade !== undefined) {
+      if (!isValidGrade(patch.grade)) {
+        throw new Error("Pick a class between LKG and Class 12.");
+      }
+      fields.grade = patch.grade;
+    }
+    if (patch.school !== undefined) fields.school = clean(patch.school);
+    if (Object.keys(fields).length === 0) return;
 
-  const { error } = await supabase.from("students").update(fields).eq("id", studentId);
-  if (error) {
-    if (error.code === "23505") {
-      throw new Error("Another student in that class already has this name.");
+    const { error } = await supabase.from("students").update(fields).eq("id", studentId);
+    if (error) {
+      if (error.code === "23505") {
+        throw new Error("Another student in that class already has this name.");
+      }
+      if (error.code === "23514") {
+        throw new Error(
+          "The database does not allow that class yet. Re-run supabase/schema.sql in the Supabase SQL editor to add LKG and UKG."
+        );
+      }
+      throw new Error("Could not save those changes.");
     }
-    throw new Error("Could not save those changes.");
-  }
-  revalidateAll();
+    revalidateAll();
+  });
 }
 
 /**
  * Retire, never delete. Their lesson history stays intact and still shows in
  * past reports; they simply stop appearing on Today and Plan.
  */
-export async function retireStudent(studentId: string) {
-  const { supabase } = await requireUser();
-  const { error } = await supabase.from("students").update({ active: false }).eq("id", studentId);
-  if (error) throw new Error("Could not retire that student.");
-  revalidateAll();
+export async function retireStudent(studentId: string): Promise<ActionResult> {
+  return guard(async () => {
+    const { supabase } = await requireUser();
+    const { error } = await supabase.from("students").update({ active: false }).eq("id", studentId);
+    if (error) throw new Error("Could not retire that student.");
+    revalidateAll();
+  });
 }
 
-export async function restoreStudent(studentId: string) {
-  const { supabase } = await requireUser();
-  const { error } = await supabase.from("students").update({ active: true }).eq("id", studentId);
-  if (error) throw new Error("Could not restore that student.");
-  revalidateAll();
+export async function restoreStudent(studentId: string): Promise<ActionResult> {
+  return guard(async () => {
+    const { supabase } = await requireUser();
+    const { error } = await supabase.from("students").update({ active: true }).eq("id", studentId);
+    if (error) throw new Error("Could not restore that student.");
+    revalidateAll();
+  });
 }
 
 /** Mark a shared student as one you teach, or take them off your list. */
-export async function setMyStudent(studentId: string, mine: boolean) {
-  const { supabase, userId } = await requireUser();
+export async function setMyStudent(studentId: string, mine: boolean): Promise<ActionResult> {
+  return guard(async () => {
+    const { supabase, userId } = await requireUser();
 
-  if (mine) {
-    const { error } = await supabase
-      .from("teacher_students")
-      .upsert(
-        { teacher_id: userId, student_id: studentId },
-        { onConflict: "teacher_id,student_id" }
-      );
-    if (error) throw new Error("Could not add them to your list.");
-  } else {
-    const { error } = await supabase
-      .from("teacher_students")
-      .delete()
-      .eq("teacher_id", userId)
-      .eq("student_id", studentId);
-    if (error) throw new Error("Could not remove them from your list.");
-  }
+    if (mine) {
+      const { error } = await supabase
+        .from("teacher_students")
+        .upsert(
+          { teacher_id: userId, student_id: studentId },
+          { onConflict: "teacher_id,student_id" }
+        );
+      if (error) throw new Error("Could not add them to your list.");
+    } else {
+      const { error } = await supabase
+        .from("teacher_students")
+        .delete()
+        .eq("teacher_id", userId)
+        .eq("student_id", studentId);
+      if (error) throw new Error("Could not remove them from your list.");
+    }
 
-  revalidateAll();
-  return { mine };
+    revalidateAll();
+    return { mine };
+  });
 }
 
 // ------------------------------------------------------------------ exams
@@ -309,34 +366,38 @@ export async function setExam(input: {
   examDate: string;
   title?: string | null;
 }) {
-  const { supabase, userId } = await requireUser();
+  return guard(async () => {
+    const { supabase, userId } = await requireUser();
 
-  if (!isISO(input.examDate)) throw new Error("Pick a valid exam date.");
+    if (!isISO(input.examDate)) throw new Error("Pick a valid exam date.");
 
-  const today = todayISO();
-  let del = supabase.from("exams").delete().eq("student_id", input.studentId).gte("exam_date", today);
-  del = input.subjectId ? del.eq("subject_id", input.subjectId) : del.is("subject_id", null);
+    const today = todayISO();
+    let del = supabase.from("exams").delete().eq("student_id", input.studentId).gte("exam_date", today);
+    del = input.subjectId ? del.eq("subject_id", input.subjectId) : del.is("subject_id", null);
 
-  const { error: delError } = await del;
-  if (delError) throw new Error("Could not update that exam date.");
+    const { error: delError } = await del;
+    if (delError) throw new Error("Could not update that exam date.");
 
-  const { error } = await supabase.from("exams").insert({
-    student_id: input.studentId,
-    subject_id: input.subjectId,
-    exam_date: input.examDate,
-    title: clean(input.title),
-    created_by: userId,
+    const { error } = await supabase.from("exams").insert({
+      student_id: input.studentId,
+      subject_id: input.subjectId,
+      exam_date: input.examDate,
+      title: clean(input.title),
+      created_by: userId,
+    });
+    if (error) throw new Error("Could not save that exam date.");
+
+    revalidateAll();
   });
-  if (error) throw new Error("Could not save that exam date.");
-
-  revalidateAll();
 }
 
-export async function removeExam(examId: string) {
-  const { supabase } = await requireUser();
-  const { error } = await supabase.from("exams").delete().eq("id", examId);
-  if (error) throw new Error("Could not remove that exam.");
-  revalidateAll();
+export async function removeExam(examId: string): Promise<ActionResult> {
+  return guard(async () => {
+    const { supabase } = await requireUser();
+    const { error } = await supabase.from("exams").delete().eq("id", examId);
+    if (error) throw new Error("Could not remove that exam.");
+    revalidateAll();
+  });
 }
 
 /**
@@ -347,116 +408,122 @@ export async function removeExam(examId: string) {
  * stops using the app. A target's upcoming dates are replaced, so running it
  * twice is safe.
  */
-export async function copyExamsToStudents(fromStudentId: string, toStudentIds: string[]) {
-  const { supabase, userId } = await requireUser();
+export async function copyExamsToStudents(fromStudentId: string, toStudentIds: string[]): Promise<ActionResult> {
+  return guard(async () => {
+    const { supabase, userId } = await requireUser();
 
-  const targets = toStudentIds.filter((id) => id && id !== fromStudentId);
-  if (targets.length === 0) throw new Error("Pick at least one classmate to copy to.");
+    const targets = toStudentIds.filter((id) => id && id !== fromStudentId);
+    if (targets.length === 0) throw new Error("Pick at least one classmate to copy to.");
 
-  const today = todayISO();
+    const today = todayISO();
 
-  const { data: source, error: readError } = await supabase
-    .from("exams")
-    .select("subject_id, exam_date, title")
-    .eq("student_id", fromStudentId)
-    .gte("exam_date", today);
+    const { data: source, error: readError } = await supabase
+      .from("exams")
+      .select("subject_id, exam_date, title")
+      .eq("student_id", fromStudentId)
+      .gte("exam_date", today);
 
-  if (readError) throw new Error("Could not read that timetable.");
-  if (!source || source.length === 0) {
-    throw new Error("That student has no upcoming exams to copy.");
-  }
+    if (readError) throw new Error("Could not read that timetable.");
+    if (!source || source.length === 0) {
+      throw new Error("That student has no upcoming exams to copy.");
+    }
 
-  // Clear the targets' upcoming exams first, so a re-run replaces rather than
-  // half-merging two different timetables.
-  const { error: clearError } = await supabase
-    .from("exams")
-    .delete()
-    .in("student_id", targets)
-    .gte("exam_date", today);
-  if (clearError) throw new Error("Could not replace the existing exam dates.");
+    // Clear the targets' upcoming exams first, so a re-run replaces rather than
+    // half-merging two different timetables.
+    const { error: clearError } = await supabase
+      .from("exams")
+      .delete()
+      .in("student_id", targets)
+      .gte("exam_date", today);
+    if (clearError) throw new Error("Could not replace the existing exam dates.");
 
-  const rows = targets.flatMap((studentId) =>
-    source.map((e) => ({
-      student_id: studentId,
-      subject_id: e.subject_id,
-      exam_date: e.exam_date,
-      title: e.title,
-      created_by: userId,
-    }))
-  );
+    const rows = targets.flatMap((studentId) =>
+      source.map((e) => ({
+        student_id: studentId,
+        subject_id: e.subject_id,
+        exam_date: e.exam_date,
+        title: e.title,
+        created_by: userId,
+      }))
+    );
 
-  const { error } = await supabase.from("exams").insert(rows);
-  if (error) throw new Error("Could not copy those exam dates.");
+    const { error } = await supabase.from("exams").insert(rows);
+    if (error) throw new Error("Could not copy those exam dates.");
 
-  revalidateAll();
-  return { copied: source.length, to: targets.length };
+    revalidateAll();
+    return { copied: source.length, to: targets.length };
+  });
 }
 
 // --------------------------------------------------------------- subjects
 
 export async function addSubject(input: { name: string; minGrade: number; maxGrade: number }) {
-  const { supabase } = await requireUser();
+  return guard(async () => {
+    const { supabase } = await requireUser();
 
-  const name = clean(input.name);
-  if (!name) throw new Error("Enter a subject name.");
-  if (!isValidGrade(input.minGrade) || !isValidGrade(input.maxGrade)) {
-    throw new Error("Pick a class range between LKG and Class 12.");
-  }
-  if (input.minGrade > input.maxGrade) {
-    throw new Error("The lowest class cannot be higher than the highest class.");
-  }
+    const name = clean(input.name);
+    if (!name) throw new Error("Enter a subject name.");
+    if (!isValidGrade(input.minGrade) || !isValidGrade(input.maxGrade)) {
+      throw new Error("Pick a class range between LKG and Class 12.");
+    }
+    if (input.minGrade > input.maxGrade) {
+      throw new Error("The lowest class cannot be higher than the highest class.");
+    }
 
-  const { data: last } = await supabase
-    .from("subjects")
-    .select("sort_order")
-    .order("sort_order", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    const { data: last } = await supabase
+      .from("subjects")
+      .select("sort_order")
+      .order("sort_order", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-  const { error } = await supabase.from("subjects").insert({
-    name,
-    min_grade: input.minGrade,
-    max_grade: input.maxGrade,
-    sort_order: (last?.sort_order ?? 0) + 1,
+    const { error } = await supabase.from("subjects").insert({
+      name,
+      min_grade: input.minGrade,
+      max_grade: input.maxGrade,
+      sort_order: (last?.sort_order ?? 0) + 1,
+    });
+
+    if (error) {
+      // Unique on lower(trim(name)): "maths" and "Maths" are the same subject.
+      if (error.code === "23505") throw new Error(name + " is already on the subject list.");
+      throw new Error("Could not add that subject.");
+    }
+
+    revalidateAll();
   });
-
-  if (error) {
-    // Unique on lower(trim(name)): "maths" and "Maths" are the same subject.
-    if (error.code === "23505") throw new Error(name + " is already on the subject list.");
-    throw new Error("Could not add that subject.");
-  }
-
-  revalidateAll();
 }
 
 export async function updateSubject(
   subjectId: string,
   patch: { name?: string; minGrade?: number; maxGrade?: number }
 ) {
-  const { supabase } = await requireUser();
+  return guard(async () => {
+    const { supabase } = await requireUser();
 
-  const fields: Record<string, unknown> = {};
-  if (patch.name !== undefined) {
-    const name = clean(patch.name);
-    if (!name) throw new Error("The subject name cannot be empty.");
-    fields.name = name;
-  }
-  if (patch.minGrade !== undefined) fields.min_grade = patch.minGrade;
-  if (patch.maxGrade !== undefined) fields.max_grade = patch.maxGrade;
+    const fields: Record<string, unknown> = {};
+    if (patch.name !== undefined) {
+      const name = clean(patch.name);
+      if (!name) throw new Error("The subject name cannot be empty.");
+      fields.name = name;
+    }
+    if (patch.minGrade !== undefined) fields.min_grade = patch.minGrade;
+    if (patch.maxGrade !== undefined) fields.max_grade = patch.maxGrade;
 
-  const min = fields.min_grade as number | undefined;
-  const max = fields.max_grade as number | undefined;
-  if (min !== undefined && max !== undefined && min > max) {
-    throw new Error("The lowest class cannot be higher than the highest class.");
-  }
-  if (Object.keys(fields).length === 0) return;
+    const min = fields.min_grade as number | undefined;
+    const max = fields.max_grade as number | undefined;
+    if (min !== undefined && max !== undefined && min > max) {
+      throw new Error("The lowest class cannot be higher than the highest class.");
+    }
+    if (Object.keys(fields).length === 0) return;
 
-  const { error } = await supabase.from("subjects").update(fields).eq("id", subjectId);
-  if (error) {
-    if (error.code === "23505") throw new Error("A subject with that name already exists.");
-    throw new Error("Could not save that subject.");
-  }
-  revalidateAll();
+    const { error } = await supabase.from("subjects").update(fields).eq("id", subjectId);
+    if (error) {
+      if (error.code === "23505") throw new Error("A subject with that name already exists.");
+      throw new Error("Could not save that subject.");
+    }
+    revalidateAll();
+  });
 }
 
 /**
@@ -465,18 +532,22 @@ export async function updateSubject(
  * against it, and "we stopped teaching Drawing in March" is a fact the reports
  * should keep.
  */
-export async function retireSubject(subjectId: string) {
-  const { supabase } = await requireUser();
-  const { error } = await supabase.from("subjects").update({ active: false }).eq("id", subjectId);
-  if (error) throw new Error("Could not retire that subject.");
-  revalidateAll();
+export async function retireSubject(subjectId: string): Promise<ActionResult> {
+  return guard(async () => {
+    const { supabase } = await requireUser();
+    const { error } = await supabase.from("subjects").update({ active: false }).eq("id", subjectId);
+    if (error) throw new Error("Could not retire that subject.");
+    revalidateAll();
+  });
 }
 
-export async function restoreSubject(subjectId: string) {
-  const { supabase } = await requireUser();
-  const { error } = await supabase.from("subjects").update({ active: true }).eq("id", subjectId);
-  if (error) throw new Error("Could not restore that subject.");
-  revalidateAll();
+export async function restoreSubject(subjectId: string): Promise<ActionResult> {
+  return guard(async () => {
+    const { supabase } = await requireUser();
+    const { error } = await supabase.from("subjects").update({ active: true }).eq("id", subjectId);
+    if (error) throw new Error("Could not restore that subject.");
+    revalidateAll();
+  });
 }
 
 /**
@@ -484,23 +555,25 @@ export async function restoreSubject(subjectId: string) {
  * everything", which is the right default for a teacher who takes every subject
  * for one class.
  */
-export async function setMySubjects(subjectIds: string[]) {
-  const { supabase, userId } = await requireUser();
+export async function setMySubjects(subjectIds: string[]): Promise<ActionResult> {
+  return guard(async () => {
+    const { supabase, userId } = await requireUser();
 
-  const { error: clearError } = await supabase
-    .from("teacher_subjects")
-    .delete()
-    .eq("teacher_id", userId);
-  if (clearError) throw new Error("Could not save your subject list.");
-
-  if (subjectIds.length > 0) {
-    const { error } = await supabase
+    const { error: clearError } = await supabase
       .from("teacher_subjects")
-      .insert(subjectIds.map((subject_id) => ({ teacher_id: userId, subject_id })));
-    if (error) throw new Error("Could not save your subject list.");
-  }
+      .delete()
+      .eq("teacher_id", userId);
+    if (clearError) throw new Error("Could not save your subject list.");
 
-  revalidateAll();
+    if (subjectIds.length > 0) {
+      const { error } = await supabase
+        .from("teacher_subjects")
+        .insert(subjectIds.map((subject_id) => ({ teacher_id: userId, subject_id })));
+      if (error) throw new Error("Could not save your subject list.");
+    }
+
+    revalidateAll();
+  });
 }
 
 // ------------------------------------------------------------------- auth

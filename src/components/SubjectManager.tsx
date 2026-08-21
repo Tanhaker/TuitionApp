@@ -39,15 +39,26 @@ export default function SubjectManager({
   const active = subjects.filter((s) => s.active);
   const retired = subjects.filter((s) => !s.active);
 
+  /**
+   * Runs a write and surfaces whatever it reports.
+   *
+   * Actions return their errors rather than throwing, because Next strips the
+   * message off anything thrown in a production build — which is what React
+   * error #441 is. The catch below is only for the request never completing.
+   */
   async function run(fn: () => Promise<unknown>, success?: string) {
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
-      await fn();
+      const res = await fn();
+      if (res && typeof res === "object" && "ok" in res && res.ok === false) {
+        setError(String((res as { error?: string }).error ?? "That did not save."));
+        return;
+      }
       if (success) setNotice(success);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong. Try again.");
+    } catch {
+      setError("Could not reach the register. Check your connection and try again.");
     } finally {
       setBusy(false);
     }
@@ -92,8 +103,9 @@ export default function SubjectManager({
             disabled={busy}
             onClick={() =>
               run(async () => {
-                await setMySubjects(picked);
-                setDirty(false);
+                const res = await setMySubjects(picked);
+                if (res.ok) setDirty(false);
+                return res;
               }, picked.length === 0 ? "Saved — you will see every subject." : "Saved.")
             }
           >
@@ -126,13 +138,16 @@ export default function SubjectManager({
             onSubmit={(e) => {
               e.preventDefault();
               run(async () => {
-                await addSubject({
+                const res = await addSubject({
                   name: form.name,
                   minGrade: Number(form.min),
                   maxGrade: Number(form.max),
                 });
-                setForm({ name: "", min: "1", max: "12" });
-                setAdding(false);
+                if (res.ok) {
+                  setForm({ name: "", min: "1", max: "12" });
+                  setAdding(false);
+                }
+                return res;
               }, "Subject added.");
             }}
           >
@@ -214,7 +229,7 @@ export default function SubjectManager({
                     aria-label={`${s.name} from class`}
                     onChange={(e) =>
                       run(async () => {
-                        await updateSubject(s.id, { minGrade: Number(e.target.value) });
+                        return updateSubject(s.id, { minGrade: Number(e.target.value) });
                       })
                     }
                   >
@@ -231,7 +246,7 @@ export default function SubjectManager({
                     aria-label={`${s.name} to class`}
                     onChange={(e) =>
                       run(async () => {
-                        await updateSubject(s.id, { maxGrade: Number(e.target.value) });
+                        return updateSubject(s.id, { maxGrade: Number(e.target.value) });
                       })
                     }
                   >
@@ -261,7 +276,7 @@ export default function SubjectManager({
                       )
                         return;
                       run(async () => {
-                        await retireSubject(s.id);
+                        return retireSubject(s.id);
                       }, `${s.name} retired.`);
                     }}
                   >
@@ -286,7 +301,7 @@ export default function SubjectManager({
                   disabled={busy}
                   onClick={() =>
                     run(async () => {
-                      await restoreSubject(s.id);
+                      return restoreSubject(s.id);
                     }, `${s.name} is back on the list.`)
                   }
                 >

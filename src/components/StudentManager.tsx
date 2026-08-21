@@ -58,15 +58,26 @@ export default function StudentManager({
   const active = students.filter((s) => s.active);
   const retired = students.filter((s) => !s.active);
 
+  /**
+   * Runs a write and surfaces whatever it reports.
+   *
+   * Actions return their errors rather than throwing, because Next strips the
+   * message off anything thrown in a production build — which is what React
+   * error #441 is. The catch below is only for the request never completing.
+   */
   async function run(fn: () => Promise<unknown>, success?: string) {
     setBusy(true);
     setError(null);
     setNotice(null);
     try {
-      await fn();
+      const res = await fn();
+      if (res && typeof res === "object" && "ok" in res && res.ok === false) {
+        setError(String((res as { error?: string }).error ?? "That did not save."));
+        return;
+      }
       if (success) setNotice(success);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong. Try again.");
+    } catch {
+      setError("Could not reach the register. Check your connection and try again.");
     } finally {
       setBusy(false);
     }
@@ -130,14 +141,17 @@ export default function StudentManager({
           onSubmit={(e) => {
             e.preventDefault();
             run(async () => {
-              await addStudent({
+              const res = await addStudent({
                 name: form.name,
                 grade: Number(form.grade),
                 school: form.school,
               });
-              setForm({ name: "", grade: form.grade, school: form.school });
-              setAdding(false);
-              startTransition(() => {});
+              if (res.ok) {
+                setForm({ name: "", grade: form.grade, school: form.school });
+                setAdding(false);
+                startTransition(() => {});
+              }
+              return res;
             }, "Student added to the tuition list.");
           }}
         >
@@ -234,7 +248,7 @@ export default function StudentManager({
                     onClick={() => {
                       setMineFlip((f) => ({ ...f, [s.id]: !mine }));
                       run(async () => {
-                        await setMyStudent(s.id, !mine);
+                        return setMyStudent(s.id, !mine);
                       });
                     }}
                   >
@@ -293,12 +307,13 @@ export default function StudentManager({
                     onSubmit={(e) => {
                       e.preventDefault();
                       run(async () => {
-                        await updateStudent(s.id, {
+                        const res = await updateStudent(s.id, {
                           name: edit.name,
                           grade: Number(edit.grade),
                           school: edit.school,
                         });
-                        setEditingId(null);
+                        if (res.ok) setEditingId(null);
+                        return res;
                       }, "Saved.");
                     }}
                   >
@@ -380,7 +395,7 @@ export default function StudentManager({
                     onClick={() => {
                       if (!confirm(`Retire ${s.name}? Their past lessons stay in the reports.`)) return;
                       run(async () => {
-                        await retireStudent(s.id);
+                        return retireStudent(s.id);
                       }, `${s.name} retired.`);
                     }}
                   >
@@ -407,7 +422,7 @@ export default function StudentManager({
                 disabled={busy}
                 onClick={() =>
                   run(async () => {
-                    await restoreStudent(s.id);
+                    return restoreStudent(s.id);
                   }, `${s.name} is back on the register.`)
                 }
               >
@@ -485,7 +500,7 @@ function ExamPanel({
                 const value = e.target.value;
                 if (!value) return;
                 onRun(async () => {
-                  await setExam({
+                  return setExam({
                     studentId: student.id,
                     subjectId: sub.id,
                     examDate: value,
@@ -501,7 +516,7 @@ function ExamPanel({
                 aria-label={`Clear ${sub.name} exam date`}
                 onClick={() =>
                   onRun(async () => {
-                    await removeExam(exam.id);
+                    return removeExam(exam.id);
                   })
                 }
               >
@@ -546,8 +561,10 @@ function ExamPanel({
                   onClick={() =>
                     onRun(async () => {
                       const res = await copyExamsToStudents(student.id, picked);
-                      setPicked([]);
-                      setCopyOpen(false);
+                      if (res.ok) {
+                        setPicked([]);
+                        setCopyOpen(false);
+                      }
                       return res;
                     }, "Timetable copied.")
                   }
