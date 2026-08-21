@@ -166,7 +166,7 @@ insert into public.subjects (name, min_grade, max_grade, sort_order) values
   ('Science',         6, 12,  6),
   ('Social Science',  6, 12,  7),
   ('Sanskrit',        6, 12,  8),
-  ('Computer',        3, 12,  9),
+  ('Computer',       -1, 12,  9),
   ('Drawing',         1,  8, 10)
 on conflict (name) do nothing;
 
@@ -230,5 +230,10 @@ on conflict (name) do nothing;
 -- Let the existing early-years subjects reach down into kindergarten. Only
 -- widens, never narrows, so a hand-tuned range is left alone.
 update public.subjects set min_grade = -1
-  where lower(trim(name)) in ('drawing', 'english', 'maths', 'gujarati')
+  where lower(trim(name)) in ('drawing', 'english', 'maths', 'gujarati', 'computer')
     and min_grade > -1;
+
+-- Computer is taught to every class, kindergarten included.
+update public.subjects
+   set min_grade = -1, max_grade = 12
+ where lower(trim(name)) = 'computer';
