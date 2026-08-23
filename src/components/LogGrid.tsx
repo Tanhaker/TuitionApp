@@ -1,8 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
-import { markAllPresent, setAttendance, setLessonNote, toggleLesson } from "@/app/actions";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  clearAttendanceFor,
+  markAllPresent,
+  setAttendance,
+  setLessonNote,
+  toggleLesson,
+} from "@/app/actions";
+import UndoToast from "@/components/UndoToast";
 import { daysBetween, prettyDate, shiftDate, todayISO } from "@/lib/dates";
 import type { Student } from "@/lib/types";
 import { gradeLabel } from "@/lib/grades";
@@ -71,6 +78,27 @@ export default function LogGrid({
   const [attFlip, setAttFlip] = useState<Record<string, boolean | null>>({});
   const [attBusy, setAttBusy] = useState(false);
 
+  // A short-lived offer to reverse the last write. The write is never delayed
+  // or confirmed first — this appears afterwards and expires on its own.
+  const [undo, setUndo] = useState<{ message: string; run: () => Promise<void> } | null>(null);
+  const [undoBusy, setUndoBusy] = useState(false);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function offerUndo(message: string, run: () => Promise<void>) {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setUndo({ message, run });
+    undoTimer.current = setTimeout(() => setUndo(null), 6000);
+  }
+
+  function clearUndo() {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setUndo(null);
+  }
+
+  useEffect(() => () => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+  }, []);
+
   const today = todayISO();
 
   function go(next: Partial<{ date: string; scope: string }>) {
@@ -78,7 +106,14 @@ export default function LogGrid({
     router.push(`/?${params.toString()}`);
   }
 
-  async function tap(studentId: string, subjectId: string, currentlyOn: boolean) {
+  async function tap(
+    studentId: string,
+    subjectId: string,
+    currentlyOn: boolean,
+    subjectName: string,
+    studentName: string,
+    existingNote: string | null
+  ) {
     const key = `${studentId}|${subjectId}`;
     setFlip((f) => ({ ...f, [key]: !currentlyOn }));
     setPending((p) => ({ ...p, [key]: true }));
@@ -107,6 +142,23 @@ export default function LogGrid({
         setNoteFlip((n) => ({ ...n, [key]: null }));
         setEditing((e) => (e === key ? null : e));
       }
+
+      if (res.on) {
+        offerUndo(`Logged ${subjectName} for ${studentName}.`, async () => {
+          await toggleLesson(studentId, subjectId, date);
+        });
+      } else {
+        // Un-logging deleted the row AND the chapter with it, so the reversal
+        // has to put the chapter back or the undo quietly loses work.
+        offerUndo(`Removed ${subjectName} for ${studentName}.`, async () => {
+          const back = await toggleLesson(studentId, subjectId, date);
+          if (back.ok && back.on && existingNote) {
+            await setLessonNote(studentId, subjectId, date, existingNote);
+            setNoteFlip((n) => ({ ...n, [key]: existingNote }));
+          }
+        });
+      }
+
       startTransition(() => router.refresh());
     } catch {
       // Only transport failures reach here now — the action returns its own
@@ -173,6 +225,7 @@ export default function LogGrid({
   const attendanceOf = (row: RowData) =>
     attFlip[row.student.id] !== undefined ? attFlip[row.student.id] : row.present;
 
+  const presentCount = rows.filter((r) => attendanceOf(r) === true).length;
   const marked = rows.filter((r) => attendanceOf(r) !== null).length;
   const absent = rows.filter((r) => attendanceOf(r) === false).length;
 
@@ -210,19 +263,22 @@ export default function LogGrid({
         </button>
       </div>
 
-      <div className="between" style={{ marginBottom: 8 }}>
-        <span className="eyebrow">
-          {prettyDate(date)} · {loggedCount} logged · {marked}/{rows.length} marked
-          {absent > 0 && ` · ${absent} absent`}
-        </span>
-        <div className="tabs" style={{ margin: 0, width: 200 }}>
-          <button data-active={scope === "mine"} onClick={() => go({ scope: "mine" })}>
-            My students
-          </button>
-          <button data-active={scope === "all"} onClick={() => go({ scope: "all" })}>
-            Everyone
-          </button>
-        </div>
+      {/* Stacked rather than side by side: the status line is long enough that
+          sharing a row with a fixed-width tab group squeezed it to about 140px
+          on a 380px phone, where it wrapped mid-phrase. */}
+      <p className="eyebrow" style={{ margin: "0 0 6px" }}>
+        {prettyDate(date)} · {loggedCount} lesson{loggedCount === 1 ? "" : "s"} logged
+        {" · "}
+        {presentCount} of {rows.length} marked present
+        {absent > 0 && ` · ${absent} absent`}
+      </p>
+      <div className="tabs" style={{ marginTop: 0, marginBottom: 8 }}>
+        <button data-active={scope === "mine"} onClick={() => go({ scope: "mine" })}>
+          My students
+        </button>
+        <button data-active={scope === "all"} onClick={() => go({ scope: "all" })}>
+          Everyone
+        </button>
       </div>
 
       {rows.length > 0 && marked < rows.length && (
@@ -252,6 +308,20 @@ export default function LogGrid({
                 return copy;
               });
               buzz(12);
+
+              const ids = unmarked.map((r) => r.student.id);
+              offerUndo(
+                `Marked ${ids.length} present.`,
+                async () => {
+                  await clearAttendanceFor(ids, date);
+                  setAttFlip((a) => {
+                    const copy = { ...a };
+                    for (const id of ids) copy[id] = null;
+                    return copy;
+                  });
+                }
+              );
+
               startTransition(() => router.refresh());
             } catch {
               setError("Could not mark everyone present. Check your connection.");
@@ -313,8 +383,22 @@ export default function LogGrid({
                       data-on={on}
                       data-due={due}
                       data-pending={pending[key] ? "true" : undefined}
-                      onClick={() => tap(row.student.id, sub.id, on)}
+                      onClick={() =>
+                        tap(
+                          row.student.id,
+                          sub.id,
+                          on,
+                          sub.name,
+                          row.student.name,
+                          noteFlip[key] !== undefined ? noteFlip[key] : sub.note
+                        )
+                      }
                       aria-pressed={on}
+                      aria-label={
+                        on
+                          ? `${sub.name}: logged today. Tap to undo.`
+                          : `${sub.name}: not logged today. Tap to log.`
+                      }
                     >
                       {sub.name}
                       {!on && (
@@ -416,6 +500,27 @@ export default function LogGrid({
             );
           })}
         </div>
+      )}
+
+      {undo && (
+        <UndoToast
+          message={undo.message}
+          busy={undoBusy}
+          onDismiss={clearUndo}
+          onUndo={async () => {
+            setUndoBusy(true);
+            try {
+              await undo.run();
+              buzz([8, 40, 8]);
+              startTransition(() => router.refresh());
+            } catch {
+              setError("Could not undo that. Check your connection.");
+            } finally {
+              setUndoBusy(false);
+              clearUndo();
+            }
+          }}
+        />
       )}
 
       <p className="hint" style={{ marginTop: 14 }}>

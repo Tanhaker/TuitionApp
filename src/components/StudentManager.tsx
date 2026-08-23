@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import {
   addStudent,
@@ -234,7 +235,9 @@ export default function StudentManager({
             return (
               <article className="row" key={s.id}>
                 <header>
-                  <span className="name">{s.name}</span>
+                  <Link href={`/students/${s.id}`} className="name" style={{ textDecoration: "underline" }}>
+                    {s.name}
+                  </Link>
                   <span className="grade">{gradeLabel(s.grade)}</span>
                   {s.school && <span className="meta">{s.school}</span>}
                 </header>
@@ -256,7 +259,7 @@ export default function StudentManager({
                   </button>
 
                   <button className="chip" onClick={() => setOpenId(open ? null : s.id)}>
-                    Exams
+                    Exam dates
                     <span className="days">{upcoming.length ? upcoming.length : "none"}</span>
                   </button>
 
@@ -364,6 +367,31 @@ export default function StudentManager({
                         Cancel
                       </button>
                     </div>
+
+                    <button
+                      type="button"
+                      className="btn danger"
+                      disabled={busy}
+                      onClick={() => {
+                        const ok = confirm(
+                          [
+                            `Retire ${s.name}?`,
+                            "",
+                            "Every lesson, chapter and attendance mark already recorded is kept, and still appears in past reports.",
+                            "",
+                            "They simply stop appearing on Today, Plan and the roster. You can bring them back from the Retired list at any time.",
+                          ].join("\n")
+                        );
+                        if (!ok) return;
+                        run(async () => {
+                          const res = await retireStudent(s.id);
+                          if (res.ok) setEditingId(null);
+                          return res;
+                        }, `${s.name} retired. Restore them from the Retired list below.`);
+                      }}
+                    >
+                      Retire {s.name}
+                    </button>
                     <p className="hint">
                       Moving a child up a class changes which subjects show for
                       them, since each subject covers a class range.
@@ -387,21 +415,6 @@ export default function StudentManager({
                   />
                 )}
 
-                <div style={{ marginTop: 10 }}>
-                  <button
-                    className="btn danger"
-                    style={{ padding: "6px 10px", minHeight: 36, fontSize: "0.8rem" }}
-                    disabled={busy}
-                    onClick={() => {
-                      if (!confirm(`Retire ${s.name}? Their past lessons stay in the reports.`)) return;
-                      run(async () => {
-                        return retireStudent(s.id);
-                      }, `${s.name} retired.`);
-                    }}
-                  >
-                    Retire
-                  </button>
-                </div>
               </article>
             );
           })}

@@ -221,11 +221,12 @@ export default function SubjectManager({
               </header>
 
               {editing === s.id ? (
+                <div className="stack">
                 <div className="between" style={{ gap: 8 }}>
                   <select
                     className="mono"
                     defaultValue={s.min_grade}
-                    style={{ flex: 1, minHeight: 40, borderRadius: 8, border: "1px solid var(--rule)", padding: "0 8px" }}
+                    style={{ flex: 1, minHeight: 44, borderRadius: 8, border: "1px solid var(--rule)", padding: "0 8px" }}
                     aria-label={`${s.name} from class`}
                     onChange={(e) =>
                       run(async () => {
@@ -242,7 +243,7 @@ export default function SubjectManager({
                   <select
                     className="mono"
                     defaultValue={s.max_grade}
-                    style={{ flex: 1, minHeight: 40, borderRadius: 8, border: "1px solid var(--rule)", padding: "0 8px" }}
+                    style={{ flex: 1, minHeight: 44, borderRadius: 8, border: "1px solid var(--rule)", padding: "0 8px" }}
                     aria-label={`${s.name} to class`}
                     onChange={(e) =>
                       run(async () => {
@@ -256,31 +257,46 @@ export default function SubjectManager({
                       </option>
                     ))}
                   </select>
-                  <button className="btn ghost" style={{ minHeight: 40 }} onClick={() => setEditing(null)}>
-                    Done
+                    <button
+                      className="btn ghost"
+                      style={{ minHeight: 44 }}
+                      onClick={() => setEditing(null)}
+                    >
+                      Done
+                    </button>
+                  </div>
+
+                  {/* Retiring lives behind Edit rather than sitting in the row.
+                      It was one thumb-width from Class range, in the alarm
+                      colour, on a screen a teacher opens to change a range. */}
+                  <button
+                    className="btn danger"
+                    disabled={busy}
+                    onClick={() => {
+                      const ok = confirm(
+                        [
+                          `Retire ${s.name}?`,
+                          "",
+                          "Every lesson already logged against this subject is kept, and still appears in past reports.",
+                          "",
+                          "It simply stops appearing as a chip on Today. You can bring it back from the Retired list at any time.",
+                        ].join("\n")
+                      );
+                      if (!ok) return;
+                      run(async () => {
+                        const res = await retireSubject(s.id);
+                        if (res.ok) setEditing(null);
+                        return res;
+                      }, `${s.name} retired. Restore it from the Retired list below.`);
+                    }}
+                  >
+                    Retire {s.name}
                   </button>
                 </div>
               ) : (
                 <div className="chips">
                   <button className="chip" onClick={() => setEditing(s.id)}>
-                    Class range
-                  </button>
-                  <button
-                    className="chip"
-                    disabled={busy}
-                    onClick={() => {
-                      if (
-                        !confirm(
-                          `Retire ${s.name}? Lessons already logged against it stay in the reports.`
-                        )
-                      )
-                        return;
-                      run(async () => {
-                        return retireSubject(s.id);
-                      }, `${s.name} retired.`);
-                    }}
-                  >
-                    Retire
+                    Edit
                   </button>
                 </div>
               )}

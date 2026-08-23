@@ -41,6 +41,18 @@ function clean(value: string | null | undefined): string | null {
 }
 
 /**
+ * For names and schools: trim, and collapse runs of internal whitespace.
+ *
+ * "Aarav   Patel" pasted from a list and "Aarav Patel" typed by hand are the
+ * same child, but they defeat the unique index on (lower(trim(name)), grade),
+ * which trims the ends and not the middle.
+ */
+function cleanName(value: string | null | undefined): string | null {
+  const v = (value ?? "").replace(/\s+/g, " ").trim();
+  return v.length ? v : null;
+}
+
+/**
  * The shape every write returns. A failure is a value, never a throw.
  *
  * Next strips the message from anything thrown out of a server action in a
@@ -211,6 +223,62 @@ export async function setLessonNote(
   return { ok: true, note: value };
 }
 
+/**
+ * Edit or delete one logged lesson from the student history screen.
+ *
+ * Keyed by lesson id rather than by (student, subject, date), because the
+ * history screen shows every teacher's entries and needs to act on a specific
+ * row. RLS decides whether it is allowed: lessons_update and lessons_delete
+ * both require teacher_id = auth.uid(), so touching a colleague's entry simply
+ * matches no rows. That is checked below and reported, rather than appearing to
+ * succeed silently.
+ */
+export async function setLessonNoteById(
+  lessonId: string,
+  note: string
+): Promise<NoteResult> {
+  const { supabase } = await requireUser();
+  const value = clean(note);
+
+  const { data, error } = await supabase
+    .from("lessons")
+    .update({ note: value })
+    .eq("id", lessonId)
+    .select("id");
+
+  if (error) {
+    return { ok: false, error: "Could not save that chapter. Check your connection." };
+  }
+  if (!data || data.length === 0) {
+    return {
+      ok: false,
+      error: "That entry was logged by another teacher, so only they can change it.",
+    };
+  }
+
+  revalidateAll();
+  return { ok: true, note: value };
+}
+
+export async function deleteLessonById(lessonId: string): Promise<ActionResult> {
+  return guard(async () => {
+    const { supabase } = await requireUser();
+
+    const { data, error } = await supabase
+      .from("lessons")
+      .delete()
+      .eq("id", lessonId)
+      .select("id");
+
+    if (error) throw new Error("Could not delete that entry.");
+    if (!data || data.length === 0) {
+      throw new Error("That entry was logged by another teacher, so only they can delete it.");
+    }
+
+    revalidateAll();
+  });
+}
+
 // --------------------------------------------------------------- students
 
 export async function addStudent(input: {
@@ -221,7 +289,7 @@ export async function addStudent(input: {
   return guard(async () => {
     const { supabase, userId } = await requireUser();
 
-    const name = clean(input.name);
+    const name = cleanName(input.name);
     if (!name) throw new Error("Enter the student's name.");
     if (!isValidGrade(input.grade)) {
       throw new Error("Pick a class between LKG and Class 12.");
@@ -229,7 +297,7 @@ export async function addStudent(input: {
 
     const { data, error } = await supabase
       .from("students")
-      .insert({ name, grade: input.grade, school: clean(input.school), created_by: userId })
+      .insert({ name, grade: input.grade, school: cleanName(input.school), created_by: userId })
       .select("id")
       .single();
 
@@ -273,7 +341,7 @@ export async function updateStudent(
 
     const fields: Record<string, unknown> = {};
     if (patch.name !== undefined) {
-      const name = clean(patch.name);
+      const name = cleanName(patch.name);
       if (!name) throw new Error("The name cannot be empty.");
       fields.name = name;
     }
@@ -283,7 +351,7 @@ export async function updateStudent(
       }
       fields.grade = patch.grade;
     }
-    if (patch.school !== undefined) fields.school = clean(patch.school);
+    if (patch.school !== undefined) fields.school = cleanName(patch.school);
     if (Object.keys(fields).length === 0) return;
 
     const { error } = await supabase.from("students").update(fields).eq("id", studentId);
@@ -678,6 +746,33 @@ export async function markAllPresent(
       }))
     );
     if (error) throw new Error("Could not mark everyone present.");
+
+    revalidateAll();
+  });
+}
+
+/**
+ * Reverse a "mark remaining present" — clears attendance for exactly the
+ * students that action created rows for.
+ *
+ * Takes the id list rather than clearing the whole day, so an undo cannot wipe
+ * marks that were already there before the bulk action ran.
+ */
+export async function clearAttendanceFor(
+  studentIds: string[],
+  date: string
+): Promise<ActionResult> {
+  return guard(async () => {
+    const { supabase } = await requireUser();
+    if (!isISO(date)) throw new Error("That date is not valid.");
+    if (studentIds.length === 0) return;
+
+    const { error } = await supabase
+      .from("attendance")
+      .delete()
+      .eq("on_date", date)
+      .in("student_id", studentIds);
+    if (error) throw new Error("Could not undo that.");
 
     revalidateAll();
   });

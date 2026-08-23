@@ -337,7 +337,9 @@ export default async function ReportsPage({
             {taught.map(({ student: s, cells, total, attendance: att }) => (
               <article className="row" key={s.id}>
                 <header>
-                  <span className="name">{s.name}</span>
+                  <Link href={`/students/${s.id}`} className="name" style={{ textDecoration: "underline" }}>
+                    {s.name}
+                  </Link>
                   <span className="grade">{gradeLabel(s.grade)}</span>
                   <span className="meta">{total} sessions</span>
                 </header>

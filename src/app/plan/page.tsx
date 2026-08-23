@@ -21,7 +21,9 @@ export const dynamic = "force-dynamic";
  */
 function score(daysToExam: number | null, daysSince: number | null) {
   const exam = daysToExam !== null && daysToExam >= 0 ? Math.max(0, 30 - daysToExam) * 3 : 0;
-  const neglect = Math.min(daysSince ?? 30, 21) * 2;
+  // Never taught has to outrank merely stale. The old cap of 21 gave both 42,
+  // so a subject a child had never had tied with one taught three weeks ago.
+  const neglect = daysSince === null ? 70 : Math.min(daysSince, 45) * 1.5;
   return exam + neglect;
 }
 
@@ -126,6 +128,13 @@ export default async function PlanPage() {
     .sort((a, b) => b.value - a.value)
     .slice(0, 25);
 
+  // A ranked list in which nothing outranks anything is not a ranking. With no
+  // exam dates and little history every pair scores about the same, so the
+  // badges imply a precision that is not there — better to say why.
+  const values = items.map((i) => i.value);
+  const spread = values.length > 1 ? Math.max(...values) - Math.min(...values) : 0;
+  const ranked = values.length > 1 && spread >= 10;
+
   const byGrade = new Map<number, typeof items>();
   for (const i of items) {
     const list = byGrade.get(i.student.grade) ?? [];
@@ -137,11 +146,21 @@ export default async function PlanPage() {
     <>
       <TopBar eyebrow="What to teach" title="Plan" />
       <main className="wrap stack" style={{ paddingTop: 12 }}>
-        <p className="hint">
-          Ranked for {prettyDate(today)} by exam pressure and how long each
-          student has gone without that subject. Teach top-down; anything you log
-          drops off tomorrow.
-        </p>
+        {ranked ? (
+          <p className="hint">
+            Ranked for {prettyDate(today)} by exam pressure and how long each
+            student has gone without that subject. Teach top-down; anything you
+            log drops off tomorrow.
+          </p>
+        ) : (
+          <p className="hint">
+            No exam dates yet, and little history. Add exam dates on the{" "}
+            <Link href="/students" style={{ textDecoration: "underline" }}>
+              Students
+            </Link>{" "}
+            screen and this list starts ranking properly.
+          </p>
+        )}
 
         {[...byGrade.entries()]
           .sort((a, b) => a[0] - b[0])
@@ -172,12 +191,14 @@ export default async function PlanPage() {
                       </div>
                     )}
                   </div>
-                  <span
-                    className="gap"
-                    data-level={i.value >= 60 ? "bad" : i.value >= 30 ? "warn" : undefined}
-                  >
-                    {i.value}
-                  </span>
+                  {ranked && (
+                    <span
+                      className="gap"
+                      data-level={i.value >= 90 ? "bad" : i.value >= 55 ? "warn" : undefined}
+                    >
+                      {Math.round(i.value)}
+                    </span>
+                  )}
                 </div>
               ))}
             </section>
