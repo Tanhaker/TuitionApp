@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.vercel.tuition_register_delta.twa",
+      "sha256_cert_fingerprints": [
+        "E0:02:9B:22:21:2A:9E:D6:47:47:F5:B0:10:55:4E:70:8F:7C:78:D3:40:C1:46:82:72:3F:A7:FC:1A:ED:AF:B1"
+      ]
+    }
+  }
+]
