@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Inter, IBM_Plex_Mono } from "next/font/google";
 import ThemeToggle from "@/components/ThemeToggle";
+import InstallPrompt from "@/components/InstallPrompt";
 import "./globals.css";
 
 /**
@@ -75,6 +76,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
         {children}
+        <InstallPrompt />
         {/* Service worker registration is inline rather than in a React effect
             so it starts before hydration, and so crawlers that only read the
             HTML (PWABuilder, store validators) can actually see it. Skipped on
