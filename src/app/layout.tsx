@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Inter, IBM_Plex_Mono } from "next/font/google";
-import RegisterSW from "@/components/RegisterSW";
 import ThemeToggle from "@/components/ThemeToggle";
 import "./globals.css";
 
@@ -39,7 +38,15 @@ export const metadata: Metadata = {
   description: "Daily teaching log for a mixed-grade tuition.",
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "Register", statusBarStyle: "default" },
-  icons: { icon: "/icon.svg", apple: "/icon.svg" },
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    // iOS ignores the manifest icons entirely and uses this.
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 export const viewport: Viewport = {
@@ -68,7 +75,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
         {children}
-        <RegisterSW />
+        {/* Service worker registration is inline rather than in a React effect
+            so it starts before hydration, and so crawlers that only read the
+            HTML (PWABuilder, store validators) can actually see it. Skipped on
+            localhost, where caching /_next/static would fight the dev server. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){if(!('serviceWorker'in navigator))return;var h=location.hostname;if(h==='localhost'||h==='127.0.0.1')return;window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){})})})()",
+          }}
+        />
       </body>
     </html>
   );

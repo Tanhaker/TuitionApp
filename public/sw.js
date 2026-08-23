@@ -7,8 +7,14 @@
  * lands is worse than an error message. Real offline logging needs a sync queue
  * with conflict handling, which is a separate piece of work.
  */
-const CACHE = "tuition-shell-v1";
-const SHELL = ["/manifest.webmanifest", "/icon.svg"];
+const CACHE = "tuition-shell-v2";
+const SHELL = [
+  "/manifest.webmanifest",
+  "/icon.svg",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/apple-touch-icon.png",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
