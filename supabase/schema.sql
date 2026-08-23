@@ -44,6 +44,21 @@ create table if not exists public.subjects (
   active      boolean not null default true
 );
 
+-- Subject names are unique case-insensitively: a teacher typing "maths" must
+-- not create a second subject alongside "Maths", or the register grows two
+-- chips that mean the same thing and every report splits down the middle.
+--
+-- This MUST come before the seed inserts below. They use an untargeted
+-- `on conflict do nothing`, which can only skip a row if some unique index
+-- exists to be violated — without this, re-running the file would duplicate
+-- every subject, and then this very index would fail to build.
+--
+-- If this line fails, you already have case-variant duplicates. Find them:
+--   select lower(trim(name)), count(*) from public.subjects
+--   group by 1 having count(*) > 1;
+create unique index if not exists subjects_name_lower_uniq
+  on public.subjects (lower(trim(name)));
+
 -- ---------- students (shared across the whole tuition) ----------
 create table if not exists public.students (
   id          uuid primary key default gen_random_uuid(),
@@ -156,6 +171,13 @@ end $$;
 
 -- ============================================================
 -- Seed subjects — edit these to match your tuition
+--
+-- `on conflict do nothing` without a target on purpose. Naming a column makes
+-- Postgres infer a matching unique index, and errors with 42P10 if it cannot
+-- find one — which happens on databases where subjects was created before the
+-- unique on (name) existed, since `create table if not exists` above is a
+-- no-op once the table is there. Untargeted, it simply skips any row that
+-- would violate any unique constraint, which is what a seed wants.
 -- ============================================================
 insert into public.subjects (name, min_grade, max_grade, sort_order) values
   ('Maths',           1, 12,  1),
@@ -168,7 +190,7 @@ insert into public.subjects (name, min_grade, max_grade, sort_order) values
   ('Sanskrit',        6, 12,  8),
   ('Computer',       -1, 12,  9),
   ('Drawing',         1,  8, 10)
-on conflict (name) do nothing;
+on conflict do nothing;
 
 -- ============================================================
 -- Per-teacher subject filter
@@ -195,19 +217,6 @@ begin
     using (teacher_id = auth.uid()) with check (teacher_id = auth.uid());
 end $$;
 
--- Subject names are unique case-insensitively: a teacher typing "maths" must
--- not create a second subject alongside "Maths", or the register grows two
--- chips that mean the same thing and every report splits down the middle.
--- The plain unique constraint on (name) stays; this is strictly tighter.
---
--- If this line fails on an existing database, you already have case-variant
--- duplicates. Merge them first:
---   select lower(trim(name)), count(*) from public.subjects
---   group by 1 having count(*) > 1;
-create unique index if not exists subjects_name_lower_uniq
-  on public.subjects (lower(trim(name)));
-
-
 -- ============================================================
 -- Kindergarten levels
 --
@@ -225,7 +234,7 @@ alter table public.students add constraint students_grade_check
 insert into public.subjects (name, min_grade, max_grade, sort_order) values
   ('Rhymes',      -1, 0, 20),
   ('Handwriting', -1, 2, 21)
-on conflict (name) do nothing;
+on conflict do nothing;
 
 -- Let the existing early-years subjects reach down into kindergarten. Only
 -- widens, never narrows, so a hand-tuned range is left alone.
