@@ -106,7 +106,33 @@ export default async function ReportsPage({
     everQ = everQ.eq("teacher_id", userId);
   }
 
-  const [{ data: inRange }, { data: everLessons }] = await Promise.all([inRangeQ, everQ]);
+  const attendanceQ = supabase
+    .from("attendance")
+    .select("student_id, on_date, present")
+    .gte("on_date", from)
+    .lte("on_date", to)
+    .in("student_id", ids);
+
+  const [{ data: inRange }, { data: everLessons }, { data: attendanceRows }] = await Promise.all([
+    inRangeQ,
+    everQ,
+    attendanceQ,
+  ]);
+
+  // Attendance is tuition-wide, so it is NOT filtered by `by`: whether a child
+  // turned up is the same fact whoever taught them.
+  const attendance = new Map<string, { present: number; absent: number }>();
+  const absentOnDay = new Set<string>();
+  for (const a of attendanceRows ?? []) {
+    const id = a.student_id as string;
+    const tally = attendance.get(id) ?? { present: 0, absent: 0 };
+    if (a.present) tally.present++;
+    else {
+      tally.absent++;
+      if (a.on_date === to) absentOnDay.add(id);
+    }
+    attendance.set(id, tally);
+  }
 
   const teacherName = new Map((teachers ?? []).map((t) => [t.id as string, t.name as string]));
   const myName = teacherName.get(userId) ?? "Teacher";
@@ -163,14 +189,24 @@ export default async function ReportsPage({
           chapters: chapters.get(key) ?? [],
         };
       });
-    return { student: s, cells, total: cells.reduce((n, c) => n + c.count, 0) };
+    return {
+      student: s,
+      cells,
+      total: cells.reduce((n, c) => n + c.count, 0),
+      attendance: attendance.get(s.id) ?? { present: 0, absent: 0 },
+    };
   });
 
   // A student with no lessons in the window is not part of the record of what
   // was taught — they are named separately instead of padding the report with
   // empty entries.
   const taught = cards.filter((c) => c.total > 0);
-  const notTaught = cards.filter((c) => c.total === 0);
+  // Someone marked absent is not a gap in your teaching — they were not there.
+  // Listing them beside genuinely missed students would misread the report.
+  const absentCards = cards.filter((c) => c.total === 0 && absentOnDay.has(c.student.id));
+  const notTaught = cards.filter(
+    (c) => c.total === 0 && !absentOnDay.has(c.student.id)
+  );
 
   const textReport = buildTextReport(
     {
@@ -180,12 +216,14 @@ export default async function ReportsPage({
       mine: by === "me",
       singleDay,
       notTaught: notTaught.map((c) => c.student.name),
+      absent: absentCards.map((c) => c.student.name),
     },
     taught.map<ReportStudent>((c) => ({
       name: c.student.name,
       grade: c.student.grade,
       school: c.student.school,
       total: c.total,
+      attendance: c.attendance,
       subjects: c.cells
         .filter((cell) => cell.count > 0)
         .map((cell) => ({
@@ -296,13 +334,26 @@ export default async function ReportsPage({
           </div>
         ) : (
           <div className="register">
-            {taught.map(({ student: s, cells, total }) => (
+            {taught.map(({ student: s, cells, total, attendance: att }) => (
               <article className="row" key={s.id}>
                 <header>
                   <span className="name">{s.name}</span>
                   <span className="grade">{gradeLabel(s.grade)}</span>
                   <span className="meta">{total} sessions</span>
                 </header>
+
+                {att.present + att.absent > 0 && (
+                  <div className="gapbar" style={{ marginBottom: 8 }}>
+                    <span className="gap" data-level={att.absent === 0 ? "ok" : undefined}>
+                      present {att.present}
+                    </span>
+                    {att.absent > 0 && (
+                      <span className="gap" data-level="bad">
+                        absent {att.absent}
+                      </span>
+                    )}
+                  </div>
+                )}
                 <div className="gapbar">
                   {cells.map((c) => (
                     <span className="gap" key={c.sub.id} data-level={c.level}>
@@ -327,6 +378,25 @@ export default async function ReportsPage({
                 )}
               </article>
             ))}
+          </div>
+        )}
+
+        {absentCards.length > 0 && (
+          <div className="card stack">
+            <span className="eyebrow">
+              {singleDay ? "Absent on this day" : "Absent, and no lessons"}
+            </span>
+            <div className="gapbar">
+              {absentCards.map((c) => (
+                <span className="gap" key={c.student.id} data-level="bad">
+                  {c.student.name} · {gradeLabel(c.student.grade)}
+                </span>
+              ))}
+            </div>
+            <p className="hint">
+              Listed apart from the gaps below: they were not there, so this is
+              not a lesson you missed.
+            </p>
           </div>
         )}
 

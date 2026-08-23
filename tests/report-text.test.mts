@@ -116,6 +116,49 @@ describe("single-day report", () => {
   });
 });
 
+describe("attendance", () => {
+  test("says so when a student attended every marked day", () => {
+    const out = buildTextReport(range, [
+      { ...aarav, attendance: { present: 12, absent: 0 } },
+    ]);
+    assert.match(out, /Aarav attended all 12 days that were marked\./);
+  });
+
+  test("counts absences, with 'once' for a single one", () => {
+    const out = buildTextReport(range, [
+      { ...aarav, attendance: { present: 11, absent: 1 } },
+    ]);
+    assert.match(out, /present on 11 of 12 marked days, absent once\./);
+  });
+
+  test("pluralises multiple absences", () => {
+    const out = buildTextReport(range, [
+      { ...aarav, attendance: { present: 9, absent: 3 } },
+    ]);
+    assert.match(out, /absent 3 times\./);
+  });
+
+  test("says nothing at all when no day was marked", () => {
+    const out = buildTextReport(range, [
+      { ...aarav, attendance: { present: 0, absent: 0 } },
+    ]);
+    assert.doesNotMatch(out, /marked day|attended all/);
+  });
+
+  test("lists absentees separately from missed lessons", () => {
+    const out = buildTextReport(
+      { ...range, singleDay: true, from: "2026-08-20", absent: ["Diya Shah"], notTaught: ["Ravi Mehta"] },
+      [aarav]
+    );
+    assert.match(out, /ABSENT/);
+    assert.match(out, /Diya Shah was marked absent on 20 August\./);
+    assert.match(out, /NOT TAUGHT ON THIS DAY/);
+    // The absent child must not also be counted as a teaching gap.
+    const gapSection = out.slice(out.indexOf("NOT TAUGHT ON THIS DAY"));
+    assert.doesNotMatch(gapSection, /Diya Shah/);
+  });
+});
+
 describe("students not taught", () => {
   test("uses singular agreement for one name", () => {
     const out = buildTextReport({ ...range, notTaught: ["Ravi Mehta"] }, [aarav]);

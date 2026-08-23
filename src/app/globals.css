@@ -217,6 +217,32 @@ button, input, select, textarea { font: inherit; color: inherit; }
   background: var(--card);
 }
 
+/* ---------- attendance ---------- */
+.attend {
+  appearance: none; cursor: pointer;
+  display: block; width: 100%;
+  min-height: 40px; padding: 9px 12px; margin-bottom: 9px;
+  border: 1px solid var(--rule); border-radius: 8px;
+  background: var(--paper); color: var(--ink-soft);
+  font-family: var(--mono); font-size: 0.74rem;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  transition: background 90ms ease, border-color 90ms ease, color 90ms ease;
+}
+.attend[data-state="present"] {
+  background: var(--teal-soft); border-color: var(--teal); color: var(--teal);
+  font-weight: 600;
+}
+.attend[data-state="absent"] {
+  background: var(--red-soft); border-color: var(--red); color: var(--red);
+  font-weight: 600;
+}
+.attend:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+/* An absent child's subjects stay tappable — the mark may simply be wrong —
+   but they recede, so the eye skips them while working down the room. */
+.row[data-absent="true"] .chips,
+.row[data-absent="true"] .chapters { opacity: 0.45; }
+
 /* ---------- generic bits ---------- */
 .card {
   background: var(--card); border: 1px solid var(--rule);

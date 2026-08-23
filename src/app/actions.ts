@@ -576,6 +576,113 @@ export async function setMySubjects(subjectIds: string[]): Promise<ActionResult>
   });
 }
 
+// ------------------------------------------------------------- attendance
+
+export type AttendanceResult =
+  | { ok: true; present: boolean | null }
+  | { ok: false; error: string };
+
+/**
+ * Mark a student present or absent for a day, or clear the mark entirely.
+ *
+ * Passing null deletes the row rather than storing a third value, because
+ * "not marked yet" is the absence of a record. A student nobody has got to
+ * must not read as absent in a report sent to a parent.
+ *
+ * Any teacher may mark any student: whoever notices the empty chair is the one
+ * who should record it, and attendance is shared tuition-wide like the roster.
+ */
+export async function setAttendance(
+  studentId: string,
+  date: string,
+  present: boolean | null
+): Promise<AttendanceResult> {
+  const { supabase, userId } = await requireUser();
+
+  if (!isISO(date)) {
+    return { ok: false, error: "That date is not valid." };
+  }
+  if (date > todayISO()) {
+    return { ok: false, error: "You cannot mark attendance for a future date." };
+  }
+
+  if (present === null) {
+    const { error } = await supabase
+      .from("attendance")
+      .delete()
+      .eq("student_id", studentId)
+      .eq("on_date", date);
+    if (error) return { ok: false, error: "Could not clear that mark. Tap again." };
+    revalidateAll();
+    return { ok: true, present: null };
+  }
+
+  const { error } = await supabase.from("attendance").upsert(
+    {
+      student_id: studentId,
+      on_date: date,
+      present,
+      marked_by: userId,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "student_id,on_date" }
+  );
+
+  if (error) {
+    return { ok: false, error: "Could not save that mark. Check your connection and tap again." };
+  }
+
+  revalidateAll();
+  return { ok: true, present };
+}
+
+/**
+ * Mark everyone on screen present in one go.
+ *
+ * Most children turn up most days, so marking twenty individually is twenty
+ * taps to record the unremarkable. This does the common case in one, leaving
+ * the teacher to tap only the empty chairs.
+ *
+ * Students already marked are left exactly as they are — running this must not
+ * silently overwrite an absence someone recorded earlier.
+ */
+export async function markAllPresent(
+  studentIds: string[],
+  date: string
+): Promise<ActionResult> {
+  return guard(async () => {
+    const { supabase, userId } = await requireUser();
+
+    if (!isISO(date)) throw new Error("That date is not valid.");
+    if (date > todayISO()) throw new Error("You cannot mark attendance for a future date.");
+    if (studentIds.length === 0) throw new Error("There is nobody on screen to mark.");
+
+    const { data: already, error: readError } = await supabase
+      .from("attendance")
+      .select("student_id")
+      .eq("on_date", date)
+      .in("student_id", studentIds);
+
+    if (readError) throw new Error("Could not read today's attendance.");
+
+    const marked = new Set((already ?? []).map((r) => r.student_id as string));
+    const toInsert = studentIds.filter((id) => !marked.has(id));
+    if (toInsert.length === 0) return;
+
+    const { error } = await supabase.from("attendance").insert(
+      toInsert.map((student_id) => ({
+        student_id,
+        on_date: date,
+        present: true,
+        marked_by: userId,
+      }))
+    );
+    if (error) throw new Error("Could not mark everyone present.");
+
+    revalidateAll();
+  });
+}
+
 // ------------------------------------------------------------------- auth
 
 export async function signOut() {

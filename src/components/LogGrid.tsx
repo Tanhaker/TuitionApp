@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
-import { setLessonNote, toggleLesson } from "@/app/actions";
+import { markAllPresent, setAttendance, setLessonNote, toggleLesson } from "@/app/actions";
 import { daysBetween, prettyDate, shiftDate, todayISO } from "@/lib/dates";
 import type { Student } from "@/lib/types";
 import { gradeLabel } from "@/lib/grades";
@@ -23,6 +23,8 @@ export type RowData = {
   student: Student;
   subjects: ChipData[];
   alsoToday: string[];
+  /** true present, false absent, null not marked yet. */
+  present: boolean | null;
 };
 
 /**
@@ -64,6 +66,10 @@ export default function LogGrid({
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [savingNote, setSavingNote] = useState(false);
+
+  // Attendance, optimistic like the chips. undefined = no local override yet.
+  const [attFlip, setAttFlip] = useState<Record<string, boolean | null>>({});
+  const [attBusy, setAttBusy] = useState(false);
 
   const today = todayISO();
 
@@ -135,6 +141,41 @@ export default function LogGrid({
     }
   }
 
+  /** Cycle: not marked -> present -> absent -> not marked. */
+  async function cycleAttendance(studentId: string, current: boolean | null) {
+    const next = current === null ? true : current ? false : null;
+    setAttFlip((a) => ({ ...a, [studentId]: next }));
+    setError(null);
+    try {
+      const res = await setAttendance(studentId, date, next);
+      if (!res.ok) {
+        setAttFlip((a) => {
+          const copy = { ...a };
+          delete copy[studentId];
+          return copy;
+        });
+        buzz([40, 60, 40]);
+        setError(res.error);
+        return;
+      }
+      buzz(next === null ? [8, 40, 8] : 12);
+      startTransition(() => router.refresh());
+    } catch {
+      setAttFlip((a) => {
+        const copy = { ...a };
+        delete copy[studentId];
+        return copy;
+      });
+      setError("Could not save attendance. Check your connection and tap again.");
+    }
+  }
+
+  const attendanceOf = (row: RowData) =>
+    attFlip[row.student.id] !== undefined ? attFlip[row.student.id] : row.present;
+
+  const marked = rows.filter((r) => attendanceOf(r) !== null).length;
+  const absent = rows.filter((r) => attendanceOf(r) === false).length;
+
   const loggedCount = useMemo(
     () =>
       rows.reduce(
@@ -171,7 +212,8 @@ export default function LogGrid({
 
       <div className="between" style={{ marginBottom: 8 }}>
         <span className="eyebrow">
-          {prettyDate(date)} · {loggedCount} logged
+          {prettyDate(date)} · {loggedCount} logged · {marked}/{rows.length} marked
+          {absent > 0 && ` · ${absent} absent`}
         </span>
         <div className="tabs" style={{ margin: 0, width: 200 }}>
           <button data-active={scope === "mine"} onClick={() => go({ scope: "mine" })}>
@@ -183,14 +225,55 @@ export default function LogGrid({
         </div>
       </div>
 
+      {rows.length > 0 && marked < rows.length && (
+        <button
+          className="btn ghost"
+          style={{ width: "100%", marginBottom: 8 }}
+          disabled={attBusy}
+          onClick={async () => {
+            setAttBusy(true);
+            setError(null);
+            try {
+              // Only the unmarked ones: this must never overwrite an absence
+              // another teacher already recorded.
+              const unmarked = rows.filter((r) => attendanceOf(r) === null);
+              const res = await markAllPresent(
+                unmarked.map((r) => r.student.id),
+                date
+              );
+              if (!res.ok) {
+                buzz([40, 60, 40]);
+                setError(res.error);
+                return;
+              }
+              setAttFlip((a) => {
+                const copy = { ...a };
+                for (const r of unmarked) copy[r.student.id] = true;
+                return copy;
+              });
+              buzz(12);
+              startTransition(() => router.refresh());
+            } catch {
+              setError("Could not mark everyone present. Check your connection.");
+            } finally {
+              setAttBusy(false);
+            }
+          }}
+        >
+          Mark remaining {rows.length - marked} present
+        </button>
+      )}
+
       {error && <p className="err">{error}</p>}
 
       {rows.length === 0 ? (
         <div className="empty">No students to show for this view.</div>
       ) : (
         <div className="register">
-          {rows.map((row) => (
-            <article className="row" key={row.student.id}>
+          {rows.map((row) => {
+            const present = attendanceOf(row);
+            return (
+            <article className="row" key={row.student.id} data-absent={present === false}>
               <header>
                 <span className="name">{row.student.name}</span>
                 <span className="grade">{gradeLabel(row.student.grade)}</span>
@@ -198,6 +281,18 @@ export default function LogGrid({
                   <span className="meta">also: {row.alsoToday.join(", ")}</span>
                 )}
               </header>
+
+              <button
+                className="attend"
+                data-state={present === null ? "unmarked" : present ? "present" : "absent"}
+                aria-label={`${row.student.name}: ${
+                  present === null ? "not marked" : present ? "present" : "absent"
+                }. Tap to change.`}
+                onClick={() => cycleAttendance(row.student.id, present)}
+              >
+                {present === null ? "Mark attendance" : present ? "Present" : "Absent"}
+              </button>
+
               <div className="chips">
                 {row.subjects.map((sub) => {
                   const key = `${row.student.id}|${sub.id}`;
@@ -318,7 +413,8 @@ export default function LogGrid({
                 );
               })()}
             </article>
-          ))}
+            );
+          })}
         </div>
       )}
 

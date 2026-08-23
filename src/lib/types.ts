@@ -70,3 +70,24 @@ export type TeacherSubject = {
   teacher_id: string;
   subject_id: string;
 };
+
+/**
+ * attendance — whether a child turned up, one row per student per day.
+ *
+ * Not per teacher: whether someone was in the room is a fact about the day, not
+ * about who taught them. NO ROW means "not marked yet", which is deliberately
+ * different from present = false. A student nobody got round to must not be
+ * counted absent.
+ */
+export type Attendance = {
+  id: string;
+  student_id: string;
+  /** "YYYY-MM-DD", local calendar. See src/lib/dates.ts. */
+  on_date: string;
+  present: boolean;
+  marked_by?: string | null;
+  note?: string | null;
+};
+
+/** present · absent · not marked yet. */
+export type AttendanceState = boolean | null;

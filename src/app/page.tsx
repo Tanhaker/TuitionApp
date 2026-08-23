@@ -82,8 +82,13 @@ export default async function TodayPage({
 
   const historyFrom = shiftDate(date, -75);
 
-  const [{ data: todayLessons }, { data: history }, { data: exams }, { data: teachers }] =
-    await Promise.all([
+  const [
+    { data: todayLessons },
+    { data: history },
+    { data: exams },
+    { data: teachers },
+    { data: attendanceRows },
+  ] = await Promise.all([
       supabase
         .from("lessons")
         .select("student_id, subject_id, teacher_id, note")
@@ -102,9 +107,19 @@ export default async function TodayPage({
         .in("student_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"])
         .order("exam_date"),
       supabase.from("teachers").select("id, name"),
+      supabase
+        .from("attendance")
+        .select("student_id, present")
+        .eq("on_date", date)
+        .in("student_id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]),
     ]);
 
   const teacherName = new Map((teachers ?? []).map((t) => [t.id as string, t.name as string]));
+
+  // No row means "not marked yet", which is not the same as absent.
+  const attendance = new Map<string, boolean>(
+    (attendanceRows ?? []).map((a) => [a.student_id as string, a.present as boolean])
+  );
 
   const mineToday = new Set<string>();
   // The chapter this teacher recorded against today's lesson, if any.
@@ -157,6 +172,7 @@ export default async function TodayPage({
         lastNote: lastNote.get(`${s.id}|${sub.id}`) ?? null,
       })),
     alsoToday: [...(othersToday.get(s.id) ?? [])],
+    present: attendance.has(s.id) ? attendance.get(s.id)! : null,
   }));
 
   return (

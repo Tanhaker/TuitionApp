@@ -184,6 +184,32 @@ create index if not exists exams_date_idx on public.exams (exam_date);
 
 
 -- ============================================================
+-- 6b. Attendance
+--
+-- Deliberately NOT per teacher. Whether a child turned up is a fact about the
+-- child and the day, not about who taught them — two teachers marking the same
+-- student would otherwise disagree. One row per student per day, so the unique
+-- constraint below is what makes marking idempotent.
+--
+-- No row at all means "not marked yet", which is different from "absent". A
+-- teacher who has not got to a student should not have them counted absent.
+-- ============================================================
+create table if not exists public.attendance (
+  id          uuid primary key default gen_random_uuid(),
+  student_id  uuid not null references public.students(id) on delete cascade,
+  on_date     date not null,
+  present     boolean not null,
+  marked_by   uuid references public.teachers(id) on delete set null,
+  note        text,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  unique (student_id, on_date)
+);
+
+create index if not exists attendance_date_idx    on public.attendance (on_date desc);
+create index if not exists attendance_student_idx on public.attendance (student_id, on_date desc);
+
+-- ============================================================
 -- 7. Row level security
 --
 -- One tuition, six trusted teachers: everyone can READ everything — that is
@@ -197,6 +223,7 @@ alter table public.teacher_students enable row level security;
 alter table public.teacher_subjects enable row level security;
 alter table public.lessons          enable row level security;
 alter table public.exams            enable row level security;
+alter table public.attendance       enable row level security;
 
 do $$
 begin
@@ -247,6 +274,13 @@ begin
   drop policy if exists exams_write on public.exams;
   create policy exams_read  on public.exams for select to authenticated using (true);
   create policy exams_write on public.exams for all    to authenticated using (true) with check (true);
+
+  -- attendance: shared like the roster is. Any teacher can mark any student,
+  -- because whoever spots the empty chair is the one who should record it.
+  drop policy if exists attendance_read  on public.attendance;
+  drop policy if exists attendance_write on public.attendance;
+  create policy attendance_read  on public.attendance for select to authenticated using (true);
+  create policy attendance_write on public.attendance for all    to authenticated using (true) with check (true);
 end $$;
 
 

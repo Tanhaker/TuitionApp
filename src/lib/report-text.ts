@@ -26,6 +26,8 @@ export type ReportStudent = {
   school: string | null;
   total: number;
   subjects: ReportSubject[];
+  /** Days marked in this window. Unmarked days count as neither. */
+  attendance?: { present: number; absent: number };
 };
 
 export type ReportMeta = {
@@ -38,6 +40,8 @@ export type ReportMeta = {
   singleDay?: boolean;
   /** Students on the list with no lessons in this window; named, not detailed. */
   notTaught: string[];
+  /** Students who were marked absent — a different thing from a missed lesson. */
+  absent?: string[];
 };
 
 /** "20 August" — the year lives in the header, so it is not repeated per line. */
@@ -169,6 +173,21 @@ export function buildTextReport(meta: ReportMeta, students: ReportStudent[]): st
       )
     );
 
+    const att = s.attendance;
+    if (att && att.present + att.absent > 0) {
+      const days = att.present + att.absent;
+      lines.push("");
+      lines.push(
+        wrap(
+          att.absent === 0
+            ? `${first} attended all ${days} day${days === 1 ? "" : "s"} that were marked.`
+            : `${first} was present on ${att.present} of ${days} marked day${
+                days === 1 ? "" : "s"
+              }, absent ${att.absent === 1 ? "once" : `${att.absent} times`}.`
+        )
+      );
+    }
+
     for (const sub of s.subjects) {
       lines.push("");
       const head = `In ${sub.name} (${sessions(sub.count)})`;
@@ -182,6 +201,24 @@ export function buildTextReport(meta: ReportMeta, students: ReportStudent[]): st
       lines.push(wrap(body + tail));
     }
 
+    lines.push("");
+  }
+
+  if (meta.absent && meta.absent.length > 0) {
+    lines.push("");
+    lines.push(meta.singleDay ? "ABSENT" : "ABSENT, NO LESSONS");
+    lines.push("");
+    lines.push(
+      wrap(
+        meta.singleDay
+          ? `${list(meta.absent)} ${
+              meta.absent.length === 1 ? "was" : "were"
+            } marked absent on ${day(meta.to)}.`
+          : `${list(meta.absent)} ${
+              meta.absent.length === 1 ? "was" : "were"
+            } marked absent and had no lessons in this period.`
+      )
+    );
     lines.push("");
   }
 
