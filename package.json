@@ -8,7 +8,9 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "smoke": "node scripts/smoke.mjs",
-    "test": "node --test \"tests/**/*.test.mts\""
+    "test": "node --test \"tests/**/*.test.mts\"",
+    "icons": "node scripts/icons.mjs",
+    "screenshots": "node scripts/screenshots.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",

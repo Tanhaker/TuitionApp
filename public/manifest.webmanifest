@@ -5,11 +5,17 @@
   "description": "Daily teaching log for a mixed-grade tuition. Log what each student was taught, record the chapter covered, mark attendance, and send a written report.",
   "lang": "en-IN",
   "dir": "ltr",
-  "categories": ["education", "productivity"],
+  "categories": [
+    "education",
+    "productivity"
+  ],
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "display_override": ["standalone", "minimal-ui"],
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
   "orientation": "portrait",
   "background_color": "#faf7f0",
   "theme_color": "#faf7f0",
@@ -52,28 +58,52 @@
       "short_name": "Today",
       "description": "Log what you taught today",
       "url": "/",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     },
     {
       "name": "Plan",
       "short_name": "Plan",
       "description": "What to teach next",
       "url": "/plan",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     },
     {
       "name": "Today's report",
       "short_name": "Report",
       "description": "The written report for today, ready to send",
       "url": "/reports?days=7&scope=mine&by=me",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     },
     {
       "name": "Students",
       "short_name": "Students",
       "description": "The shared roster",
       "url": "/students",
-      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     }
   ]
 }
