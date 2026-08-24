@@ -295,6 +295,11 @@ end $$;
 -- cannot find an exact match. Untargeted, it simply skips any row that would
 -- violate any unique constraint — which is what a seed wants, and which works
 -- against the case-insensitive index created in section 2.
+--
+-- One consequence worth knowing: this cannot revive a RETIRED subject. The row
+-- already exists, so the insert is skipped, and retiring is a deliberate act
+-- that a re-run of this file has no business undoing. If a subject you expect
+-- is missing from Today, look under Retired on the Subjects screen first.
 -- ============================================================
 insert into public.subjects (name, min_grade, max_grade, sort_order) values
   ('Maths',           -3, 12,  1),
