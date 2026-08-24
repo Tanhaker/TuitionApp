@@ -13,12 +13,17 @@ No Tailwind, no UI library — one hand-written stylesheet, so nothing to fight 
 | Screen | Purpose |
 |---|---|
 | **Today** | Pick a date, tap subject chips per student. One tap = one logged lesson. Shows days since you last taught that subject, and days to that student's exam. |
+| **Board** | One day, every teacher. What each colleague logged, who has not filed yet, who was absent — read-only, and shareable as a message. Replaces the evening WhatsApp round. |
 | **Plan** | Ranked list of what to teach next — exam pressure + how long a student has gone without a subject. Not a fixed timetable, deliberately. |
 | **Reports** | Per student, last-taught date and session count per subject over 7/30/90 days, colour-coded gaps, CSV export. |
 | **Students** | Shared roster. Add a child, mark them as yours, enter their exam dates, copy one student's exam timetable to classmates from the same school. |
 
 ### Design decisions worth knowing
 
+- **Classes run Nursery to Class 12.** Grades are integers so ordering and
+  subject ranges work by plain comparison: Nursery is -2, LKG -1, UKG 0. See
+  `src/lib/grades.ts` — and re-run `supabase/schema.sql` after any change there,
+  because the students grade check constraint carries the same bound.
 - **Students belong to the tuition, not to a teacher.** Each teacher marks which
   students are theirs. Two teachers teaching the same child see one record and one
   exam timetable — no duplicates, no split history.

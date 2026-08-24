@@ -2,6 +2,7 @@
 // module directly, without the bundler's "@/" alias.
 import { fromISO } from "./dates.ts";
 import { gradeLabel } from "./grades.ts";
+import { list, wrap } from "./text.ts";
 
 /**
  * Builds the written export — the register as prose rather than a spreadsheet.
@@ -68,41 +69,12 @@ function weekdayFull(iso: string): string {
   });
 }
 
-/** ["a"] -> "a";  ["a","b"] -> "a and b";  ["a","b","c"] -> "a, b and c" */
-function list(items: string[]): string {
-  if (items.length === 0) return "";
-  if (items.length === 1) return items[0];
-  return items.slice(0, -1).join(", ") + " and " + items[items.length - 1];
-}
-
 function times(n: number): string {
   return n === 1 ? "once" : `${n} times`;
 }
 
 function sessions(n: number): string {
   return n === 1 ? "1 session" : `${n} sessions`;
-}
-
-/** Wrap prose at a width that survives being pasted into WhatsApp or a letter. */
-function wrap(text: string, width = 68): string {
-  const out: string[] = [];
-  for (const paragraph of text.split("\n")) {
-    if (paragraph.length <= width) {
-      out.push(paragraph);
-      continue;
-    }
-    let line = "";
-    for (const word of paragraph.split(" ")) {
-      if (line && (line + " " + word).length > width) {
-        out.push(line);
-        line = word;
-      } else {
-        line = line ? line + " " + word : word;
-      }
-    }
-    if (line) out.push(line);
-  }
-  return out.join("\n");
 }
 
 export function buildTextReport(meta: ReportMeta, students: ReportStudent[]): string {

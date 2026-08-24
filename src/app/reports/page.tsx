@@ -6,7 +6,7 @@ import Nav from "@/components/Nav";
 import CsvButton from "@/components/CsvButton";
 import DownloadTextButton from "@/components/DownloadTextButton";
 import ShareTextButton from "@/components/ShareTextButton";
-import ReportDayPicker from "@/components/ReportDayPicker";
+import DayStrip from "@/components/DayStrip";
 import { daysBetween, isISO, prettyDate, shiftDate, todayISO } from "@/lib/dates";
 import { buildTextReport, type ReportStudent } from "@/lib/report-text";
 import type { Subject, Student } from "@/lib/types";
@@ -274,7 +274,9 @@ export default async function ReportsPage({
           </div>
         </details>
 
-        {singleDay && <ReportDayPicker on={to} scope={scope} by={by} />}
+        {singleDay && (
+          <DayStrip on={to} basePath="/reports" params={{ scope, by }} label="Report date" />
+        )}
 
         <div className="tabs" style={{ marginTop: -4 }}>
           <Link href={link(days, "mine", by)} style={{ flex: 1 }}>

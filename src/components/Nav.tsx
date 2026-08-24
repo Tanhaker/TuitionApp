@@ -5,10 +5,14 @@ import { usePathname } from "next/navigation";
 
 /**
  * Fixed bottom nav — thumb reach matters more than screen space here, and the
- * teacher is standing up. Four destinations, no menu, no nesting.
+ * teacher is standing up. Five destinations, no menu, no nesting.
+ *
+ * Board sits beside Today deliberately: one is what you are writing, the other
+ * is what everyone wrote, and they get glanced at in that order.
  */
 const ITEMS = [
   { href: "/", glyph: "✓", label: "Today" },
+  { href: "/board", glyph: "▦", label: "Board" },
   { href: "/plan", glyph: "◷", label: "Plan" },
   { href: "/reports", glyph: "▤", label: "Reports" },
   { href: "/students", glyph: "☺", label: "Students" },

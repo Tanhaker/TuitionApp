@@ -120,7 +120,7 @@ export default function StudentManager({
       <div className="field" style={{ marginBottom: 10 }}>
         <input
           type="search"
-          placeholder="Search name, school or class (try LKG)"
+          placeholder="Search name, school or class (try Nursery)"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           aria-label="Search students"

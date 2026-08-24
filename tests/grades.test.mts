@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   GRADES,
   LKG,
+  NURSERY,
   UKG,
   gradeLabel,
   gradeMatchesQuery,
@@ -11,31 +12,48 @@ import {
 } from "../src/lib/grades.ts";
 
 /**
- * Kindergarten sits below Class 1 on the same integer line, so the ordering and
- * range checks the rest of the app relies on keep working untouched.
+ * Nursery and the two kindergarten years sit below Class 1 on the same integer
+ * line, so the ordering and range checks the rest of the app relies on keep
+ * working untouched.
  */
 
 describe("ordering", () => {
-  test("LKG comes before UKG, which comes before Class 1", () => {
+  test("Nursery comes before LKG, before UKG, before Class 1", () => {
+    assert.ok(NURSERY < LKG);
     assert.ok(LKG < UKG);
     assert.ok(UKG < 1);
   });
 
   test("GRADES is sorted low to high and complete", () => {
     assert.deepEqual(GRADES, [...GRADES].sort((a, b) => a - b));
-    assert.equal(GRADES.length, 14); // LKG, UKG, and Classes 1-12
-    assert.equal(GRADES[0], LKG);
+    assert.equal(GRADES.length, 15); // Nursery, LKG, UKG, and Classes 1-12
+    assert.equal(GRADES[0], NURSERY);
     assert.equal(GRADES.at(-1), 12);
   });
 
   test("sorting students by grade puts the little ones first", () => {
-    const mixed = [5, LKG, 12, UKG, 1];
-    assert.deepEqual([...mixed].sort((a, b) => a - b), [LKG, UKG, 1, 5, 12]);
+    const mixed = [5, LKG, 12, NURSERY, UKG, 1];
+    assert.deepEqual([...mixed].sort((a, b) => a - b), [NURSERY, LKG, UKG, 1, 5, 12]);
   });
 });
 
 describe("subject ranges still work by plain comparison", () => {
   const covers = (min: number, max: number, grade: number) => grade >= min && grade <= max;
+
+  test("a nursery-only subject reaches nobody else", () => {
+    assert.ok(covers(NURSERY, NURSERY, NURSERY));
+    assert.equal(covers(NURSERY, NURSERY, LKG), false);
+  });
+
+  test("a pre-primary subject spans Nursery to UKG", () => {
+    assert.ok(covers(NURSERY, UKG, NURSERY));
+    assert.ok(covers(NURSERY, UKG, UKG));
+    assert.equal(covers(NURSERY, UKG, 1), false);
+  });
+
+  test("an LKG-UKG subject does not reach down into Nursery", () => {
+    assert.equal(covers(LKG, UKG, NURSERY), false);
+  });
 
   test("a kindergarten subject reaches both KG years and stops at Class 1", () => {
     assert.ok(covers(LKG, UKG, LKG));
@@ -50,6 +68,7 @@ describe("subject ranges still work by plain comparison", () => {
   });
 
   test("an existing Class 6-12 subject never reaches kindergarten", () => {
+    assert.equal(covers(6, 12, NURSERY), false);
     assert.equal(covers(6, 12, LKG), false);
     assert.equal(covers(6, 12, UKG), false);
     assert.ok(covers(6, 12, 7));
@@ -57,11 +76,14 @@ describe("subject ranges still work by plain comparison", () => {
 });
 
 describe("labels", () => {
-  test("kindergarten reads as itself, not as a class number", () => {
+  test("the pre-primary years read as themselves, not as class numbers", () => {
+    assert.equal(gradeLabel(NURSERY), "Nursery");
     assert.equal(gradeLabel(LKG), "LKG");
     assert.equal(gradeLabel(UKG), "UKG");
+    assert.doesNotMatch(gradeLabel(NURSERY), /Class/);
     assert.doesNotMatch(gradeLabel(LKG), /Class/);
     assert.doesNotMatch(gradeLabel(UKG), /-1|0/);
+    assert.doesNotMatch(gradeLabel(NURSERY), /-2/);
   });
 
   test("ordinary classes keep the Class prefix", () => {
@@ -69,7 +91,8 @@ describe("labels", () => {
     assert.equal(gradeLabel(12), "Class 12");
   });
 
-  test("short form drops the prefix but keeps the KG names", () => {
+  test("short form drops the prefix but keeps the pre-primary names", () => {
+    assert.equal(gradeShort(NURSERY), "Nur");
     assert.equal(gradeShort(LKG), "LKG");
     assert.equal(gradeShort(UKG), "UKG");
     assert.equal(gradeShort(7), "7");
@@ -89,13 +112,19 @@ describe("isValidGrade", () => {
   });
 
   test("rejects out of range and non-integers", () => {
-    for (const bad of [-2, 13, 1.5, NaN]) {
+    for (const bad of [-3, 13, 1.5, NaN]) {
       assert.equal(isValidGrade(bad), false, `${bad} should be rejected`);
     }
   });
 });
 
 describe("roster search", () => {
+  test("finds nursery by its full name and its short form", () => {
+    assert.ok(gradeMatchesQuery(NURSERY, "nursery"));
+    assert.ok(gradeMatchesQuery(NURSERY, "Nur"));
+    assert.equal(gradeMatchesQuery(LKG, "nursery"), false);
+  });
+
   test("finds kindergarten by name, in any case", () => {
     assert.ok(gradeMatchesQuery(LKG, "lkg"));
     assert.ok(gradeMatchesQuery(LKG, "LKG"));
@@ -106,6 +135,7 @@ describe("roster search", () => {
     assert.ok(gradeMatchesQuery(LKG, "kg"));
     assert.ok(gradeMatchesQuery(UKG, "kg"));
     assert.equal(gradeMatchesQuery(1, "kg"), false);
+    assert.equal(gradeMatchesQuery(NURSERY, "kg"), false);
   });
 
   test("still finds ordinary classes by number", () => {
@@ -117,5 +147,6 @@ describe("roster search", () => {
   test("does not match kindergarten against a bare number", () => {
     assert.equal(gradeMatchesQuery(UKG, "0"), false);
     assert.equal(gradeMatchesQuery(LKG, "-1"), false);
+    assert.equal(gradeMatchesQuery(NURSERY, "-2"), false);
   });
 });

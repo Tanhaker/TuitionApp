@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { isISO, todayISO } from "@/lib/dates";
-import { gradeLabel, isValidGrade } from "@/lib/grades";
+import { MAX_GRADE, MIN_GRADE, gradeLabel, isValidGrade } from "@/lib/grades";
 
 /**
  * Every database write in the app lives in this file.
@@ -292,7 +292,7 @@ export async function addStudent(input: {
     const name = cleanName(input.name);
     if (!name) throw new Error("Enter the student's name.");
     if (!isValidGrade(input.grade)) {
-      throw new Error("Pick a class between LKG and Class 12.");
+      throw new Error(`Pick a class between ${gradeLabel(MIN_GRADE)} and ${gradeLabel(MAX_GRADE)}.`);
     }
 
     const { data, error } = await supabase
@@ -314,11 +314,12 @@ export async function addStudent(input: {
         );
       }
       // 23514 = check constraint. In practice this is the grade range: a
-      // database that has not had the LKG/UKG migration applied still carries
-      // `check (grade between 1 and 12)` and rejects kindergarten outright.
+      // database that is a migration behind still carries an older bound —
+      // `between 1 and 12`, or `between -1 and 12` from before Nursery — and
+      // rejects the pre-primary years outright.
       if (error.code === "23514") {
         throw new Error(
-          "The database does not allow that class yet. Re-run supabase/schema.sql in the Supabase SQL editor to add LKG and UKG."
+          "The database does not allow that class yet. Re-run supabase/schema.sql in the Supabase SQL editor to add Nursery, LKG and UKG."
         );
       }
       throw new Error("Could not add that student.");
@@ -347,7 +348,7 @@ export async function updateStudent(
     }
     if (patch.grade !== undefined) {
       if (!isValidGrade(patch.grade)) {
-        throw new Error("Pick a class between LKG and Class 12.");
+        throw new Error(`Pick a class between ${gradeLabel(MIN_GRADE)} and ${gradeLabel(MAX_GRADE)}.`);
       }
       fields.grade = patch.grade;
     }
@@ -361,7 +362,7 @@ export async function updateStudent(
       }
       if (error.code === "23514") {
         throw new Error(
-          "The database does not allow that class yet. Re-run supabase/schema.sql in the Supabase SQL editor to add LKG and UKG."
+          "The database does not allow that class yet. Re-run supabase/schema.sql in the Supabase SQL editor to add Nursery, LKG and UKG."
         );
       }
       throw new Error("Could not save those changes.");
@@ -532,7 +533,9 @@ export async function addSubject(input: { name: string; minGrade: number; maxGra
     const name = clean(input.name);
     if (!name) throw new Error("Enter a subject name.");
     if (!isValidGrade(input.minGrade) || !isValidGrade(input.maxGrade)) {
-      throw new Error("Pick a class range between LKG and Class 12.");
+      throw new Error(
+        `Pick a class range between ${gradeLabel(MIN_GRADE)} and ${gradeLabel(MAX_GRADE)}.`
+      );
     }
     if (input.minGrade > input.maxGrade) {
       throw new Error("The lowest class cannot be higher than the highest class.");
