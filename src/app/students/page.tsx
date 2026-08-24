@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { requireUserId } from "@/lib/auth";
 import TopBar from "@/components/TopBar";
@@ -34,6 +35,15 @@ export default async function StudentsPage() {
     <>
       <TopBar eyebrow="Tuition list" title="Students" />
       <main className="wrap">
+        {/* The whole arrangement lives on its own screen rather than in this
+            one, which is already the longest in the app. */}
+        <div className="between" style={{ paddingTop: 12 }}>
+          <span className="eyebrow">Your list, and the tuition&rsquo;s</span>
+          <Link href="/teachers" className="eyebrow" style={{ textDecoration: "underline" }}>
+            Who teaches whom &rarr;
+          </Link>
+        </div>
+
         <StudentManager
           students={(students ?? []) as Student[]}
           subjects={(subjects ?? []) as Subject[]}

@@ -16,6 +16,7 @@ No Tailwind, no UI library — one hand-written stylesheet, so nothing to fight 
 | **Board** | One day, every teacher. What each colleague logged, who has not filed yet, who was absent — read-only, and shareable as a message. Replaces the evening WhatsApp round. |
 | **Plan** | Ranked list of what to teach next — exam pressure + how long a student has gone without a subject. Not a fixed timetable, deliberately. |
 | **Reports** | Per student, last-taught date and session count per subject over 7/30/90 days, colour-coded gaps, CSV export. |
+| **Teachers** | Who teaches whom, for the whole tuition — each teacher's list, students shared between two teachers, and the children on nobody's list. Read-only; reached from Students. |
 | **Students** | Shared roster. Add a child, mark them as yours, enter their exam dates, copy one student's exam timetable to classmates from the same school. |
 
 ### Design decisions worth knowing
