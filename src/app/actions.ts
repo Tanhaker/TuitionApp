@@ -292,7 +292,7 @@ export async function addStudent(input: {
     const name = cleanName(input.name);
     if (!name) throw new Error("Enter the student's name.");
     if (!isValidGrade(input.grade)) {
-      throw new Error(`Pick a class between ${gradeLabel(MIN_GRADE)} and ${gradeLabel(MAX_GRADE)}.`);
+      throw new Error(`Pick a level from ${gradeLabel(MIN_GRADE)} to ${gradeLabel(MAX_GRADE)}.`);
     }
 
     const { data, error } = await supabase
@@ -315,11 +315,12 @@ export async function addStudent(input: {
       }
       // 23514 = check constraint. In practice this is the grade range: a
       // database that is a migration behind still carries an older bound —
-      // `between 1 and 12`, or `between -1 and 12` from before Nursery — and
-      // rejects the pre-primary years outright.
+      // `between 1 and 12`, `between -1 and 12` from before Nursery, or
+      // `between -2 and 12` from before the Hobby Centre — and rejects the
+      // level outright.
       if (error.code === "23514") {
         throw new Error(
-          "The database does not allow that class yet. Re-run supabase/schema.sql in the Supabase SQL editor to add Nursery, LKG and UKG."
+          "The database does not allow that level yet. Re-run supabase/schema.sql in the Supabase SQL editor to add the Hobby Centre, Nursery, LKG and UKG."
         );
       }
       throw new Error("Could not add that student.");
@@ -348,7 +349,7 @@ export async function updateStudent(
     }
     if (patch.grade !== undefined) {
       if (!isValidGrade(patch.grade)) {
-        throw new Error(`Pick a class between ${gradeLabel(MIN_GRADE)} and ${gradeLabel(MAX_GRADE)}.`);
+        throw new Error(`Pick a level from ${gradeLabel(MIN_GRADE)} to ${gradeLabel(MAX_GRADE)}.`);
       }
       fields.grade = patch.grade;
     }
@@ -362,7 +363,7 @@ export async function updateStudent(
       }
       if (error.code === "23514") {
         throw new Error(
-          "The database does not allow that class yet. Re-run supabase/schema.sql in the Supabase SQL editor to add Nursery, LKG and UKG."
+          "The database does not allow that level yet. Re-run supabase/schema.sql in the Supabase SQL editor to add the Hobby Centre, Nursery, LKG and UKG."
         );
       }
       throw new Error("Could not save those changes.");
@@ -534,7 +535,7 @@ export async function addSubject(input: { name: string; minGrade: number; maxGra
     if (!name) throw new Error("Enter a subject name.");
     if (!isValidGrade(input.minGrade) || !isValidGrade(input.maxGrade)) {
       throw new Error(
-        `Pick a class range between ${gradeLabel(MIN_GRADE)} and ${gradeLabel(MAX_GRADE)}.`
+        `Pick a range inside ${gradeLabel(MIN_GRADE)} to ${gradeLabel(MAX_GRADE)}.`
       );
     }
     if (input.minGrade > input.maxGrade) {

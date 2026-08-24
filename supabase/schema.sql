@@ -9,7 +9,8 @@
 -- exist, and the widening updates only ever widen.
 --
 -- Class levels are integers so they sort and compare:
---   -2 = Nursery, -1 = LKG, 0 = UKG, 1..12 = Class 1..12   (see src/lib/grades.ts)
+--   -3 = Hobby Centre, -2 = Nursery, -1 = LKG, 0 = UKG, 1..12 = Class 1..12
+--   (see src/lib/grades.ts)
 -- ============================================================
 
 create extension if not exists "pgcrypto";
@@ -92,7 +93,8 @@ create table if not exists public.students (
 -- `create table if not exists` is a no-op on a database that already has the
 -- table — an inline constraint would never reach it. Older databases carry
 -- `check (grade between 1 and 12)`, which rejects the pre-primary years
--- outright — as does the later `between -1 and 12`, which predates Nursery.
+-- outright — as does `between -1 and 12`, which predates Nursery, and
+-- `between -2 and 12`, which predates the Hobby Centre.
 --
 -- Any existing check constraint mentioning grade is dropped by discovery, so
 -- this works whatever Postgres happened to name it.
@@ -114,7 +116,7 @@ begin
 end $$;
 
 alter table public.students
-  add constraint students_grade_check check (grade between -2 and 12);
+  add constraint students_grade_check check (grade between -3 and 12);
 
 -- Stops two teachers creating a duplicate record for the same child. Partial,
 -- so a retired student does not block re-adding the same name later.
@@ -303,25 +305,32 @@ insert into public.subjects (name, min_grade, max_grade, sort_order) values
   ('Science',          6, 12,  6),
   ('Social Science',   6, 12,  7),
   ('Sanskrit',         6, 12,  8),
-  ('Computer',        -2, 12,  9),
-  ('Drawing',         -2,  8, 10),
-  ('Rhymes',          -2,  0, 11),
-  ('Handwriting',     -2,  2, 12)
+  ('Computer',        -3, 12,  9),
+  ('Drawing',         -3,  8, 10),
+  ('Rhymes',          -3,  0, 11),
+  ('Handwriting',     -3,  2, 12)
 on conflict do nothing;
 
 -- The seed above skips subjects that already exist, so ranges on an existing
 -- database are corrected here instead. These only ever WIDEN a range, so a
 -- range you have hand-tuned on the Subjects screen is left alone.
+-- School subjects reach down to Nursery, but stop there: a Hobby Centre row
+-- should not sprout a Maths chip.
 update public.subjects set min_grade = -2
- where lower(trim(name)) in
-       ('maths', 'english', 'gujarati', 'drawing', 'computer', 'rhymes', 'handwriting')
+ where lower(trim(name)) in ('maths', 'english', 'gujarati')
    and min_grade > -2;
 
--- Computer is taught to every class, the pre-primary years included.
+-- These four are what a Hobby Centre session actually is, so they reach -3 and
+-- a Hobby Centre row has something on it from the first day.
+update public.subjects set min_grade = -3
+ where lower(trim(name)) in ('drawing', 'rhymes', 'handwriting', 'computer')
+   and min_grade > -3;
+
+-- Computer is taught at every level, the Hobby Centre included.
 update public.subjects
-   set min_grade = -2, max_grade = 12
+   set min_grade = -3, max_grade = 12
  where lower(trim(name)) = 'computer'
-   and (min_grade > -2 or max_grade < 12);
+   and (min_grade > -3 or max_grade < 12);
 
 
 -- ============================================================

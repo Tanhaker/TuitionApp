@@ -20,8 +20,10 @@ No Tailwind, no UI library — one hand-written stylesheet, so nothing to fight 
 
 ### Design decisions worth knowing
 
-- **Classes run Nursery to Class 12.** Grades are integers so ordering and
-  subject ranges work by plain comparison: Nursery is -2, LKG -1, UKG 0. See
+- **Levels run Hobby Centre to Class 12.** Grades are integers so ordering and
+  subject ranges work by plain comparison: Hobby Centre is -3, Nursery -2,
+  LKG -1, UKG 0. The Hobby Centre is a programme rather than an age year; the
+  number only fixes where it sits in a picker and which subjects reach it. See
   `src/lib/grades.ts` — and re-run `supabase/schema.sql` after any change there,
   because the students grade check constraint carries the same bound.
 - **Students belong to the tuition, not to a teacher.** Each teacher marks which

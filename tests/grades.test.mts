@@ -2,6 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   GRADES,
+  HOBBY_CENTRE,
   LKG,
   NURSERY,
   UKG,
@@ -12,13 +13,14 @@ import {
 } from "../src/lib/grades.ts";
 
 /**
- * Nursery and the two kindergarten years sit below Class 1 on the same integer
- * line, so the ordering and range checks the rest of the app relies on keep
- * working untouched.
+ * The Hobby Centre, Nursery and the two kindergarten years all sit below
+ * Class 1 on the same integer line, so the ordering and range checks the rest
+ * of the app relies on keep working untouched.
  */
 
 describe("ordering", () => {
-  test("Nursery comes before LKG, before UKG, before Class 1", () => {
+  test("Hobby Centre comes before Nursery, before LKG, before UKG, before Class 1", () => {
+    assert.ok(HOBBY_CENTRE < NURSERY);
     assert.ok(NURSERY < LKG);
     assert.ok(LKG < UKG);
     assert.ok(UKG < 1);
@@ -26,19 +28,32 @@ describe("ordering", () => {
 
   test("GRADES is sorted low to high and complete", () => {
     assert.deepEqual(GRADES, [...GRADES].sort((a, b) => a - b));
-    assert.equal(GRADES.length, 15); // Nursery, LKG, UKG, and Classes 1-12
-    assert.equal(GRADES[0], NURSERY);
+    assert.equal(GRADES.length, 16); // Hobby Centre, Nursery, LKG, UKG, Classes 1-12
+    assert.equal(GRADES[0], HOBBY_CENTRE);
     assert.equal(GRADES.at(-1), 12);
   });
 
   test("sorting students by grade puts the little ones first", () => {
-    const mixed = [5, LKG, 12, NURSERY, UKG, 1];
-    assert.deepEqual([...mixed].sort((a, b) => a - b), [NURSERY, LKG, UKG, 1, 5, 12]);
+    const mixed = [5, LKG, 12, NURSERY, UKG, 1, HOBBY_CENTRE];
+    assert.deepEqual(
+      [...mixed].sort((a, b) => a - b),
+      [HOBBY_CENTRE, NURSERY, LKG, UKG, 1, 5, 12]
+    );
   });
 });
 
 describe("subject ranges still work by plain comparison", () => {
   const covers = (min: number, max: number, grade: number) => grade >= min && grade <= max;
+
+  test("a Hobby Centre subject stays inside the Hobby Centre", () => {
+    assert.ok(covers(HOBBY_CENTRE, HOBBY_CENTRE, HOBBY_CENTRE));
+    assert.equal(covers(HOBBY_CENTRE, HOBBY_CENTRE, NURSERY), false);
+    assert.equal(covers(HOBBY_CENTRE, HOBBY_CENTRE, 4), false);
+  });
+
+  test("a school subject starting at Nursery does not reach the Hobby Centre", () => {
+    assert.equal(covers(NURSERY, 12, HOBBY_CENTRE), false);
+  });
 
   test("a nursery-only subject reaches nobody else", () => {
     assert.ok(covers(NURSERY, NURSERY, NURSERY));
@@ -68,6 +83,7 @@ describe("subject ranges still work by plain comparison", () => {
   });
 
   test("an existing Class 6-12 subject never reaches kindergarten", () => {
+    assert.equal(covers(6, 12, HOBBY_CENTRE), false);
     assert.equal(covers(6, 12, NURSERY), false);
     assert.equal(covers(6, 12, LKG), false);
     assert.equal(covers(6, 12, UKG), false);
@@ -77,6 +93,7 @@ describe("subject ranges still work by plain comparison", () => {
 
 describe("labels", () => {
   test("the pre-primary years read as themselves, not as class numbers", () => {
+    assert.equal(gradeLabel(HOBBY_CENTRE), "Hobby Centre");
     assert.equal(gradeLabel(NURSERY), "Nursery");
     assert.equal(gradeLabel(LKG), "LKG");
     assert.equal(gradeLabel(UKG), "UKG");
@@ -84,6 +101,7 @@ describe("labels", () => {
     assert.doesNotMatch(gradeLabel(LKG), /Class/);
     assert.doesNotMatch(gradeLabel(UKG), /-1|0/);
     assert.doesNotMatch(gradeLabel(NURSERY), /-2/);
+    assert.doesNotMatch(gradeLabel(HOBBY_CENTRE), /Class|-3/);
   });
 
   test("ordinary classes keep the Class prefix", () => {
@@ -92,6 +110,7 @@ describe("labels", () => {
   });
 
   test("short form drops the prefix but keeps the pre-primary names", () => {
+    assert.equal(gradeShort(HOBBY_CENTRE), "Hobby");
     assert.equal(gradeShort(NURSERY), "Nur");
     assert.equal(gradeShort(LKG), "LKG");
     assert.equal(gradeShort(UKG), "UKG");
@@ -112,13 +131,19 @@ describe("isValidGrade", () => {
   });
 
   test("rejects out of range and non-integers", () => {
-    for (const bad of [-3, 13, 1.5, NaN]) {
+    for (const bad of [-4, 13, 1.5, NaN]) {
       assert.equal(isValidGrade(bad), false, `${bad} should be rejected`);
     }
   });
 });
 
 describe("roster search", () => {
+  test("finds the Hobby Centre by its full name and its short form", () => {
+    assert.ok(gradeMatchesQuery(HOBBY_CENTRE, "hobby"));
+    assert.ok(gradeMatchesQuery(HOBBY_CENTRE, "Hobby Centre"));
+    assert.equal(gradeMatchesQuery(NURSERY, "hobby"), false);
+  });
+
   test("finds nursery by its full name and its short form", () => {
     assert.ok(gradeMatchesQuery(NURSERY, "nursery"));
     assert.ok(gradeMatchesQuery(NURSERY, "Nur"));
@@ -136,6 +161,7 @@ describe("roster search", () => {
     assert.ok(gradeMatchesQuery(UKG, "kg"));
     assert.equal(gradeMatchesQuery(1, "kg"), false);
     assert.equal(gradeMatchesQuery(NURSERY, "kg"), false);
+    assert.equal(gradeMatchesQuery(HOBBY_CENTRE, "kg"), false);
   });
 
   test("still finds ordinary classes by number", () => {
@@ -148,5 +174,6 @@ describe("roster search", () => {
     assert.equal(gradeMatchesQuery(UKG, "0"), false);
     assert.equal(gradeMatchesQuery(LKG, "-1"), false);
     assert.equal(gradeMatchesQuery(NURSERY, "-2"), false);
+    assert.equal(gradeMatchesQuery(HOBBY_CENTRE, "-3"), false);
   });
 });

@@ -128,8 +128,10 @@ export default function SubjectManager({
         </div>
 
         <p className="hint">
-          Class range decides which children see a subject: Rhymes
-          Nursery&ndash;UKG shows on a UKG row, Science 6&ndash;12 does not.
+          The range decides which children see a subject: Rhymes
+          Hobby&ndash;UKG shows on a UKG row, Science 6&ndash;12 does not. Give a
+          subject a range starting at Hobby for it to appear on a Hobby Centre
+          row.
         </p>
 
         {adding ? (
