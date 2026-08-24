@@ -297,40 +297,32 @@ end $$;
 -- against the case-insensitive index created in section 2.
 -- ============================================================
 insert into public.subjects (name, min_grade, max_grade, sort_order) values
-  ('Maths',           -2, 12,  1),
-  ('English',         -2, 12,  2),
-  ('Gujarati',        -2, 12,  3),
-  ('Hindi',            3, 12,  4),
-  ('EVS',              1,  5,  5),
-  ('Science',          6, 12,  6),
-  ('Social Science',   6, 12,  7),
-  ('Sanskrit',         6, 12,  8),
+  ('Maths',           -3, 12,  1),
+  ('English',         -3, 12,  2),
+  ('Gujarati',        -3, 12,  3),
+  ('Hindi',           -3, 12,  4),
+  ('EVS',             -3, 12,  5),
+  ('Science',         -3, 12,  6),
+  ('Social Science',  -3, 12,  7),
+  ('Sanskrit',        -3, 12,  8),
   ('Computer',        -3, 12,  9),
-  ('Drawing',         -3,  8, 10),
-  ('Rhymes',          -3,  0, 11),
-  ('Handwriting',     -3,  2, 12)
+  ('Drawing',         -3, 12, 10),
+  ('Rhymes',          -3, 12, 11),
+  ('Handwriting',     -3, 12, 12)
 on conflict do nothing;
 
--- The seed above skips subjects that already exist, so ranges on an existing
--- database are corrected here instead. These only ever WIDEN a range, so a
--- range you have hand-tuned on the Subjects screen is left alone.
--- School subjects reach down to Nursery, but stop there: a Hobby Centre row
--- should not sprout a Maths chip.
-update public.subjects set min_grade = -2
- where lower(trim(name)) in ('maths', 'english', 'gujarati')
-   and min_grade > -2;
-
--- These four are what a Hobby Centre session actually is, so they reach -3 and
--- a Hobby Centre row has something on it from the first day.
-update public.subjects set min_grade = -3
- where lower(trim(name)) in ('drawing', 'rhymes', 'handwriting', 'computer')
-   and min_grade > -3;
-
--- Computer is taught at every level, the Hobby Centre included.
+-- Every subject is offered at every level, Hobby Centre through Class 12.
+--
+-- This is a deliberate choice, not a default: the tuition would rather see a
+-- chip it does not need than lose one it does, and a teacher simply ignores
+-- the chips that do not apply to the child in front of them.
+--
+-- NOTE: unlike the seed above, this overwrites ranges you have set by hand on
+-- the Subjects screen. If you ever narrow a subject there and want it to stay
+-- narrow, comment this block out before re-running this file.
 update public.subjects
    set min_grade = -3, max_grade = 12
- where lower(trim(name)) = 'computer'
-   and (min_grade > -3 or max_grade < 12);
+ where min_grade <> -3 or max_grade <> 12;
 
 
 -- ============================================================

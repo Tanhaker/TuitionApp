@@ -9,7 +9,12 @@ import {
   updateSubject,
 } from "@/app/actions";
 import type { Subject } from "@/lib/types";
-import { GRADES, gradeLabel, gradeShort } from "@/lib/grades";
+import { GRADES, MAX_GRADE, MIN_GRADE, gradeLabel, gradeShort } from "@/lib/grades";
+
+// A new subject covers every level by default, the same as the seeded ones.
+// Narrowing is the deliberate act: being offered a chip you do not need costs a
+// glance, whereas a missing chip costs a lesson that never gets logged at all.
+const BLANK = { name: "", min: String(MIN_GRADE), max: String(MAX_GRADE) };
 
 /**
  * One shared subject list for the whole tuition, plus a per-teacher filter.
@@ -34,7 +39,7 @@ export default function SubjectManager({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const [form, setForm] = useState({ name: "", min: "1", max: "12" });
+  const [form, setForm] = useState(BLANK);
 
   const active = subjects.filter((s) => s.active);
   const retired = subjects.filter((s) => !s.active);
@@ -128,10 +133,10 @@ export default function SubjectManager({
         </div>
 
         <p className="hint">
-          The range decides which children see a subject: Rhymes
-          Hobby&ndash;UKG shows on a UKG row, Science 6&ndash;12 does not. Give a
-          subject a range starting at Hobby for it to appear on a Hobby Centre
-          row.
+          Every subject is offered at every level, Hobby Centre to Class 12, so
+          any chip you need is always there. Narrow a range here if you would
+          rather a subject stopped appearing on some rows &mdash; Science
+          6&ndash;12 would then vanish from a Class 3 row.
         </p>
 
         {adding ? (
@@ -146,7 +151,7 @@ export default function SubjectManager({
                   maxGrade: Number(form.max),
                 });
                 if (res.ok) {
-                  setForm({ name: "", min: "1", max: "12" });
+                  setForm(BLANK);
                   setAdding(false);
                 }
                 return res;

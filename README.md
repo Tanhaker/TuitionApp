@@ -26,6 +26,10 @@ No Tailwind, no UI library — one hand-written stylesheet, so nothing to fight 
   number only fixes where it sits in a picker and which subjects reach it. See
   `src/lib/grades.ts` — and re-run `supabase/schema.sql` after any change there,
   because the students grade check constraint carries the same bound.
+- **Every subject is offered at every level.** A chip you do not need costs a
+  glance; a chip that is missing costs a lesson that never gets logged. Narrow
+  a subject's range on the Subjects screen if you want it to stop appearing on
+  some rows — but note that re-running `supabase/schema.sql` widens it back.
 - **Students belong to the tuition, not to a teacher.** Each teacher marks which
   students are theirs. Two teachers teaching the same child see one record and one
   exam timetable — no duplicates, no split history.
